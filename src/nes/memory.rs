@@ -32,7 +32,7 @@ impl CpuMemory {
     }
 
     // calculate the zero page index address
-    fn get_zp_idx(&self, addr: u8, idx: u8) -> u16 {
+    fn get_zpg_x(&self, addr: u8, idx: u8) -> u16 {
         let real_addr = Wrapping(addr) + Wrapping(idx);
         real_addr.0 as u16
     }
@@ -44,31 +44,48 @@ impl CpuMemory {
     }
 
     // calculate the indexed absolute addr form the 2 operands + index
-    fn get_abs_idx(&self, addr1: u8, addr2: u8, idx: u8) -> u16 {
+    fn get_abs_x(&self, addr1: u8, addr2: u8, idx: u8) -> u16 {
         let abs_addr = self.get_abs(addr1, addr2);
         let abs_idx = Wrapping(abs_addr) + Wrapping(idx as u16);
 
         abs_idx.0
     }
 
+    // return the opcode given the pc. 0 reads from beggining of PRG_ROM
+    pub fn read_opcode(&self, pc: u16) -> u8 {
+        let addr = Wrapping(CPU_ADDR_PRG_ROM as u16) + Wrapping(pc);
+        self.memory[addr.0 as usize]
+    }
+
+    // read first arg of opcode. Given pc
+    pub fn read_opcode_aa(&self, pc: u16) -> u8 {
+        let addr = Wrapping(CPU_ADDR_PRG_ROM as u16) + Wrapping(pc) + Wrapping(1);
+        self.memory[addr.0 as usize]
+    }
+
+    pub fn read_opcode_bb(&self, pc: u16) -> u8 {
+        let addr = Wrapping(CPU_ADDR_PRG_ROM as u16) + Wrapping(pc) + Wrapping(2);
+        self.memory[addr.0 as usize]
+    }
+
     // read byte from the addr in zero page
-    pub fn read_zp(&self, addr: u8) -> u8 {
+    pub fn read_zpg(&self, addr: u8) -> u8 {
         self.read(addr as u16)
     }
 
     // write byte to addr in zero page
-    pub fn write_zp(&mut self, addr: u8, val: u8) {
+    pub fn write_zpg(&mut self, addr: u8, val: u8) {
         self.write(addr as u16, val);
     }
 
     // read byte from indexed address in zero page
-    pub fn read_zp_idx(&self, addr: u8, idx: u8) -> u8 {
-        self.read(self.get_zp_idx(addr, idx))
+    pub fn read_zpg_x(&self, addr: u8, idx: u8) -> u8 {
+        self.read(self.get_zpg_x(addr, idx))
     }
 
     // write byte to indexed address in zero page
-    pub fn write_zp_idx(&mut self, addr: u8, idx: u8, val: u8) {
-        self.write(self.get_zp_idx(addr, val), val);
+    pub fn write_zpg_x(&mut self, addr: u8, idx: u8, val: u8) {
+        self.write(self.get_zpg_x(addr, val), val);
     }
 
     // read absolute byte given 2 operands of the instruction
@@ -84,20 +101,20 @@ impl CpuMemory {
     }
 
     // read absolute byte given 2 operands of instruction and index
-    pub fn read_abs_idx(&self, addr1: u8, addr2: u8, idx: u8) -> u8 {
-        let addr = self.get_abs_idx(addr1, addr2, idx);
+    pub fn read_abs_x(&self, addr1: u8, addr2: u8, idx: u8) -> u8 {
+        let addr = self.get_abs_x(addr1, addr2, idx);
         self.read(addr)
     }
 
     // write absolute byte given 2 operands of instruction and index
-    pub fn write_abs_idx(&mut self, addr1: u8, addr2: u8, idx: u8, val: u8) {
-        let addr = self.get_abs_idx(addr1, addr2, idx);
+    pub fn write_abs_x(&mut self, addr1: u8, addr2: u8, idx: u8, val: u8) {
+        let addr = self.get_abs_x(addr1, addr2, idx);
         self.write(addr, val);
     }
 
     // read from indexed indirect memory location given the operand and the
     // register values, the address contains the address to read from
-    pub fn read_idx_ind(&self, addr1: u8, addr2: u8) -> u8 {
+    pub fn read_ind_x(&self, addr1: u8, addr2: u8) -> u8 {
         let idx_addr = self.get_abs(addr1, addr2);
         let real_addr1 = self.read(idx_addr);
         let real_addr2 = self.read(idx_addr + 1);
@@ -106,7 +123,7 @@ impl CpuMemory {
 
     // write to the indexed indirect memory location given the operand and the
     // register values
-    pub fn write_idx_ind(&mut self, addr: u8, reg: u8, val: u8) {
+    pub fn write_ind_x(&mut self, addr: u8, reg: u8, val: u8) {
         let idx_addr = self.get_abs(addr, reg);
         let real_addr1 = self.read(idx_addr);
         let real_addr2 = self.read(idx_addr + 1);
@@ -115,9 +132,9 @@ impl CpuMemory {
 
     // read value indirect indexed memory location given the operand and the
     // register values
-    pub fn read_ind_idx(&self, addr: u8, reg: u8) -> u8 {
-        let ind_addr1 = self.read_zp(addr); // needs wrapping
-        let ind_addr2 = self.read_zp(addr + 1);
+    pub fn read_ind_y(&self, addr: u8, reg: u8) -> u8 {
+        let ind_addr1 = self.read_zpg(addr); // needs wrapping
+        let ind_addr2 = self.read_zpg(addr + 1);
         let ind_addr = self.get_abs(ind_addr1, ind_addr2);
         let idx_addr = ind_addr + reg as u16;
         self.read(idx_addr)
@@ -125,9 +142,9 @@ impl CpuMemory {
 
     // write value to the indirect indexed memory location given the operand
     // and the register values
-    pub fn write_ind_idx(&mut self, addr: u8, reg: u8, val: u8) {
-        let ind_addr1 = self.read_zp(addr); // needs wrapping
-        let ind_addr2 = self.read_zp(addr + 1);
+    pub fn write_ind_y(&mut self, addr: u8, reg: u8, val: u8) {
+        let ind_addr1 = self.read_zpg(addr); // needs wrapping
+        let ind_addr2 = self.read_zpg(addr + 1);
         let ind_addr = self.get_abs(ind_addr1, ind_addr2);
         let idx_addr = ind_addr + reg as u16;
         self.write(idx_addr, val);
@@ -205,29 +222,29 @@ mod tests {
     }
 
     #[test]
-    fn test_read_zp() {
+    fn test_read_zpg() {
         let mut mem = CpuMemory::new();
 
         for i in 0..CPU_MEM_PAGE_SIZE {
             let val = i as u8;
             mem.memory[i] = val;
-            assert_eq!(mem.read_zp(val), val);
+            assert_eq!(mem.read_zpg(val), val);
         }
     }
 
     #[test]
-    fn test_write_zp() {
+    fn test_write_zpg() {
         let mut mem = CpuMemory::new();
 
         for i in 0..CPU_MEM_PAGE_SIZE {
             let val = i as u8;
-            mem.write_zp(val, val);
+            mem.write_zpg(val, val);
             assert_eq!(mem.memory[i], val);
         }
     }
 
     #[test]
-    fn test_read_zp_idx() {
+    fn test_read_zpg_x() {
         let mut mem = CpuMemory::new();
 
         for zp_addr in 0..CPU_MEM_PAGE_SIZE {
@@ -236,13 +253,13 @@ mod tests {
                 let val = reg as u8;
 
                 mem.memory[real_addr.0 as usize] = val;
-                assert_eq!(mem.read_zp_idx(zp_addr as u8, reg as u8), val);
+                assert_eq!(mem.read_zpg_x(zp_addr as u8, reg as u8), val);
             }
         }
     }
 
     #[test]
-    fn test_write_zp_idx() {
+    fn test_write_zpg_x() {
         let mut mem = CpuMemory::new();
 
         for zp_addr in 0..CPU_MEM_PAGE_SIZE {
@@ -250,7 +267,7 @@ mod tests {
                 let real_addr = Wrapping(zp_addr as u8) + Wrapping(reg as u8);
                 let val = reg as u8;
 
-                mem.write_zp_idx(zp_addr as u8, reg as u8, val);
+                mem.write_zpg_x(zp_addr as u8, reg as u8, val);
                 assert_eq!(mem.memory[real_addr.0 as usize], val);
             }
         }
@@ -282,7 +299,7 @@ mod tests {
         }
     }
 
-    fn get_abs_idx_reg_values() -> Vec<u8> {
+    fn get_abs_x_reg_values() -> Vec<u8> {
         let mut reg_vals: Vec<u8> = Vec::new();
         reg_vals.push(0);
         reg_vals.push(32);
@@ -293,10 +310,10 @@ mod tests {
     }
 
     #[test]
-    fn test_read_abs_idx() {
+    fn test_read_abs_x() {
         let mut mem = CpuMemory::new();
 
-        let reg_vals = get_abs_idx_reg_values();
+        let reg_vals = get_abs_x_reg_values();
         for i in 0..CPU_MEM_SIZE {
             for j in 0..reg_vals.len() {
                 let val = reg_vals[j];
@@ -304,7 +321,7 @@ mod tests {
                 mem.memory[addr.0 as usize] = val;
 
                 assert_eq!(
-                    mem.read_abs_idx((i & 0x00FF) as u8, ((i & 0xFF00) >> 8) as u8, val),
+                    mem.read_abs_x((i & 0x00FF) as u8, ((i & 0xFF00) >> 8) as u8, val),
                     val
                 );
             }
@@ -315,12 +332,12 @@ mod tests {
     fn test_write_abs_idx() {
         let mut mem = CpuMemory::new();
 
-        let reg_vals = get_abs_idx_reg_values();
+        let reg_vals = get_abs_x_reg_values();
         for i in 0..CPU_MEM_SIZE {
             for j in 0..reg_vals.len() {
                 let val = reg_vals[j];
                 let addr = Wrapping(i as u16) + Wrapping(val as u16);
-                mem.write_abs_idx((i & 0x00FF) as u8, ((i & 0xFF00) >> 8) as u8, val, val);
+                mem.write_abs_x((i & 0x00FF) as u8, ((i & 0xFF00) >> 8) as u8, val, val);
 
                 assert_eq!(mem.memory[addr.0 as usize], val);
             }

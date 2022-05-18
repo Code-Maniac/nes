@@ -46,7 +46,7 @@ pub struct Ricoh2A03<'a> {
     sr: u8,
 
     // the accumulator register
-    accum: u8,
+    acc: u8,
 
     // index register x
     irx: u8,
@@ -66,7 +66,7 @@ impl<'a> Ricoh2A03<'a> {
             pc: 0,
             sp: 0,
             sr: 0,
-            accum: 0,
+            acc: 0,
             irx: 0,
             iry: 0,
             cpu_mem,
@@ -121,6 +121,50 @@ impl<'a> Ricoh2A03<'a> {
         self.sr |= (val as u8) << STATUS_REG_ADDR_NEGATIVE;
     }
 
+    // PC and register dependant read operations
+    fn read_opcode(&self) -> u8 {
+        self.cpu_mem.read_opcode(self.pc)
+    }
+
+    fn read_zpg(&self) -> u8 {
+        let zpg_addr = self.cpu_mem.read_opcode_aa(self.pc);
+        self.cpu_mem.read_zpg(zpg_addr)
+    }
+    fn read_zpg_x(&self) -> u8 {
+        let zpg_addr = self.cpu_mem.read_opcode_aa(self.pc);
+        self.cpu_mem.read_zpg_x(zpg_addr, self.irx)
+    }
+    fn read_zpg_y(&self) -> u8 {
+        let zpg_addr = self.cpu_mem.read_opcode_aa(self.pc);
+        self.cpu_mem.read_zpg_x(zpg_addr, self.iry)
+    }
+    fn read_abs(&self) -> u8 {
+        let aa = self.cpu_mem.read_opcode_aa(self.pc);
+        let bb = self.cpu_mem.read_opcode_bb(self.pc);
+        self.cpu_mem.read_abs(aa, bb)
+    }
+    fn read_abs_x(&self) -> u8 {
+        let aa = self.cpu_mem.read_opcode_aa(self.pc);
+        let bb = self.cpu_mem.read_opcode_bb(self.pc);
+        self.cpu_mem.read_abs_x(aa, bb, self.irx)
+    }
+    fn read_abs_y(&self) -> u8 {
+        let aa = self.cpu_mem.read_opcode_aa(self.pc);
+        let bb = self.cpu_mem.read_opcode_bb(self.pc);
+        self.cpu_mem.read_abs_x(aa, bb, self.iry)
+    }
+    fn read_ind_x(&self) -> u8 {
+        let aa = self.cpu_mem.read_opcode_aa(self.pc);
+        self.cpu_mem.read_ind_x(aa, self.irx)
+    }
+    fn read_ind_y(&self) -> u8 {
+        let aa = self.cpu_mem.read_opcode_aa(self.pc);
+        self.cpu_mem.read_ind_y(aa, self.iry)
+    }
+    fn read_imm(&self) -> u8 {
+        self.cpu_mem.read_opcode_aa(self.pc)
+    }
+
     // INSTRUCTION PROCESSING
     // All instruction are implemented below
     // Each instruction will have to implement variants with different memory
@@ -149,9 +193,7 @@ impl<'a> Ricoh2A03<'a> {
     // crossed
 
     fn process_opcode(&mut self) {
-        let opcode = self.cpu_mem.read(self.pc);
-
-        match opcode {
+        match self.read_opcode() {
             BRK => {
                 self.brk();
             }
@@ -611,187 +653,375 @@ impl<'a> Ricoh2A03<'a> {
         }
     }
 
+    // addressing independant functions
+
+    // ora affects the following registers:
+    // N, Z
+    fn ora(&mut self, mem_val: u8) {
+        self.acc |= mem_val;
+
+        // set zero and negative flags
+        self.set_zero_flag(self.acc == 0);
+        self.set_negative_flag(self.acc & 0x80 > 0);
+    }
+
+    // and affects the following registers:
+    // N, Z
+    fn and(&mut self, mem_val: u8) {
+        self.acc |= mem_val;
+
+        self.set_zero_flag(self.acc == 0);
+        self.set_negative_flag(self.acc & 0x80 > 0);
+    }
+
     // HI 0
     fn brk(&mut self) {}
-    fn ora_ind_x(&mut self) {}
-    fn ora_zpg(&mut self) {}
+
+    fn ora_ind_x(&mut self) {
+        self.ora(self.read_ind_x());
+    }
+
+    fn ora_zpg(&mut self) {
+        self.ora(self.read_zpg());
+    }
+
     fn asl_zpg(&mut self) {}
+
     fn php(&mut self) {}
-    fn ora_imm(&mut self) {}
+
+    fn ora_imm(&mut self) {
+        self.ora(self.read_imm());
+    }
+
     fn asl_a(&mut self) {}
-    fn ora_abs(&mut self) {}
+
+    fn ora_abs(&mut self) {
+        self.ora(self.read_abs());
+    }
+
     fn asl_abs(&mut self) {}
 
     // HI 1
     fn bpl(&mut self) {}
-    fn ora_ind_y(&mut self) {}
-    fn ora_zpg_x(&mut self) {}
+
+    fn ora_ind_y(&mut self) {
+        self.ora(self.read_ind_y());
+    }
+
+    fn ora_zpg_x(&mut self) {
+        self.ora(self.read_zpg_x());
+    }
+
     fn asl_zpg_x(&mut self) {}
+
     fn clc_imp(&mut self) {}
-    fn ora_abs_y(&mut self) {}
-    fn ora_abs_x(&mut self) {}
+
+    fn ora_abs_y(&mut self) {
+        self.ora(self.read_abs_y());
+    }
+
+    fn ora_abs_x(&mut self) {
+        self.ora(self.read_abs_x());
+    }
+
     fn asl_abs_x(&mut self) {}
 
     // HI 2
     fn jsr_abs(&mut self) {}
-    fn and_ind_x(&mut self) {}
+
+    fn and_ind_x(&mut self) {
+        self.and(self.read_ind_x());
+    }
+
     fn bit_zpg(&mut self) {}
-    fn and_zpg(&mut self) {}
+
+    fn and_zpg(&mut self) {
+        self.and(self.read_zpg());
+    }
+
     fn rol_zpg(&mut self) {}
+
     fn plp(&mut self) {}
-    fn and_imm(&mut self) {}
+
+    fn and_imm(&mut self) {
+        self.and(self.read_imm());
+    }
+
     fn rol_a(&mut self) {}
+
     fn bit_abs(&mut self) {}
-    fn and_abs(&mut self) {}
+
+    fn and_abs(&mut self) {
+        self.and(self.read_abs());
+    }
+
     fn rol_abs(&mut self) {}
 
     // HI 3
     fn bmi_rel(&mut self) {}
-    fn and_ind_y(&mut self) {}
-    fn and_zpg_x(&mut self) {}
+
+    fn and_ind_y(&mut self) {
+        self.and(self.read_ind_y());
+    }
+
+    fn and_zpg_x(&mut self) {
+        self.and(self.read_zpg_x());
+    }
+
     fn rol_zpg_x(&mut self) {}
+
     fn sec(&mut self) {}
-    fn and_abs_y(&mut self) {}
-    fn and_abs_x(&mut self) {}
+
+    fn and_abs_y(&mut self) {
+        self.and(self.read_abs_y());
+    }
+
+    fn and_abs_x(&mut self) {
+        self.and(self.read_abs_x());
+    }
+
     fn rol_abs_x(&mut self) {}
 
     // HI 4
     fn rti(&mut self) {}
+
     fn eor_ind_x(&mut self) {}
+
     fn eor_zpg(&mut self) {}
+
     fn lsr_zpg(&mut self) {}
+
     fn pha(&mut self) {}
+
     fn eor_imm(&mut self) {}
+
     fn lsr_a(&mut self) {}
+
     fn jmp_abs(&mut self) {}
+
     fn eor_abs(&mut self) {}
+
     fn lsr_abs(&mut self) {}
 
     // HI 5
     fn bvc_rel(&mut self) {}
+
     fn eor_in_y(&mut self) {}
+
     fn eor_zpg_x(&mut self) {}
+
     fn lsr_zpg_x(&mut self) {}
+
     fn cli(&mut self) {}
+
     fn eor_abs_y(&mut self) {}
+
     fn eor_abs_x(&mut self) {}
+
     fn lsr_abs_x(&mut self) {}
 
     // HI 6
     fn rts(&mut self) {}
+
     fn adc_ind_x(&mut self) {}
+
     fn adc_zpg(&mut self) {}
+
     fn ror_zpg(&mut self) {}
+
     fn pla(&mut self) {}
+
     fn adc_imm(&mut self) {}
+
     fn ror_a(&mut self) {}
+
     fn jmp_ind(&mut self) {}
+
     fn adc_abs(&mut self) {}
+
     fn ror_abs(&mut self) {}
 
     // HI 7
     fn bvs_rel(&mut self) {}
+
     fn adc_ind_y(&mut self) {}
+
     fn adc_zpg_x(&mut self) {}
+
     fn ror_zpg_x(&mut self) {}
+
     fn sei(&mut self) {}
+
     fn adc_abs_y(&mut self) {}
+
     fn adc_abs_x(&mut self) {}
+
     fn ror_abs_x(&mut self) {}
 
     // HI 8
     fn sta_ind_x(&mut self) {}
+
     fn sty_zpg(&mut self) {}
+
     fn sta_zpg(&mut self) {}
+
     fn stx_zpg(&mut self) {}
+
     fn dey(&mut self) {}
+
     fn txa(&mut self) {}
+
     fn sty_abs(&mut self) {}
+
     fn sta_abs(&mut self) {}
+
     fn stx_abs(&mut self) {}
 
     // HI 9
     fn bcc_rel(&mut self) {}
+
     fn sta_ind_y(&mut self) {}
+
     fn sty_zpg_x(&mut self) {}
+
     fn sta_zpg_x(&mut self) {}
+
     fn stx_zpg_y(&mut self) {}
+
     fn tya(&mut self) {}
+
     fn sta_abs_y(&mut self) {}
+
     fn txs(&mut self) {}
+
     fn sta_abs_x(&mut self) {}
 
     // HI A
     fn ldy_imm(&mut self) {}
+
     fn lda_ind_x(&mut self) {}
+
     fn ldx_imm(&mut self) {}
+
     fn ldy_zpg(&mut self) {}
+
     fn lda_zpg(&mut self) {}
+
     fn ldx_zpg(&mut self) {}
+
     fn tay(&mut self) {}
+
     fn lda_imm(&mut self) {}
+
     fn tax(&mut self) {}
+
     fn ldy_abs(&mut self) {}
+
     fn lda_abs(&mut self) {}
+
     fn ldx_abs(&mut self) {}
 
     // HI B
     fn bcs_rel(&mut self) {}
+
     fn lda_ind_y(&mut self) {}
+
     fn ldy_zpg_x(&mut self) {}
+
     fn lda_zpg_x(&mut self) {}
+
     fn ldx_zpg_y(&mut self) {}
+
     fn clv(&mut self) {}
+
     fn lda_abs_y(&mut self) {}
+
     fn tsx(&mut self) {}
+
     fn ldy_abs_x(&mut self) {}
+
     fn lda_abs_x(&mut self) {}
+
     fn ldx_abs_y(&mut self) {}
 
     // HI C
     fn cpy_imm(&mut self) {}
+
     fn cmp_ind_x(&mut self) {}
+
     fn cpy_zpg(&mut self) {}
+
     fn cmp_zpg(&mut self) {}
+
     fn dec_zpg(&mut self) {}
+
     fn iny(&mut self) {}
+
     fn cmp_imm(&mut self) {}
+
     fn dex(&mut self) {}
+
     fn cpy_abs(&mut self) {}
+
     fn cmp_abs(&mut self) {}
+
     fn dec_abs(&mut self) {}
 
     // HI D
     fn bne_rel(&mut self) {}
+
     fn cmp_ind_y(&mut self) {}
+
     fn cmp_zpg_x(&mut self) {}
+
     fn dec_zpg_x(&mut self) {}
+
     fn cld(&mut self) {}
+
     fn cmp_abs_y(&mut self) {}
+
     fn cmp_abs_x(&mut self) {}
+
     fn dec_abs_x(&mut self) {}
 
     // HI E
     fn cpx_imm(&mut self) {}
+
     fn sbc_ind_x(&mut self) {}
+
     fn cpx_zpg(&mut self) {}
+
     fn sbc_zpg(&mut self) {}
+
     fn inc_zpg(&mut self) {}
+
     fn inx(&mut self) {}
+
     fn sbc_imm(&mut self) {}
+
     fn nop(&mut self) {}
+
     fn cpx_abs(&mut self) {}
+
     fn sbc_abs(&mut self) {}
+
     fn inc_abs(&mut self) {}
 
     // HI F
     fn beq_rel(&mut self) {}
+
     fn sbc_ind_y(&mut self) {}
+
     fn sbc_zpg_x(&mut self) {}
+
     fn inc_zpg_x(&mut self) {}
+
     fn sed(&mut self) {}
+
     fn sbc_abs_y(&mut self) {}
+
     fn sbc_abs_x(&mut self) {}
+
     fn inc_abs_x(&mut self) {}
 }
 
@@ -841,42 +1071,9 @@ mod tests {
     }
 
     #[test]
-    fn test_ora_ind_x() {
-        let mut mem = get_test_mem();
-        let mut cpu = get_test_2a03(&mut mem);
+    fn test_ora_ind_x() {}
 
-        // construct some test data as vec of tuples:
-        // (opcode, accum_val, zp_addr, xregister, addr_at_zp_ind_x, val_at_ind_x_addr)
-        let test_data: Vec<(u8, u8, u8, u8, u16, u8)> = vec![
-            (ORA_IND_X, 0x20, 0x00, 0x00, 0x007f, 0x11),
-            (ORA_IND_X, 0x20, 0x00, 0x00, 0x007f, 0x11),
-            (ORA_IND_X, 0x20, 0x00, 0x00, 0x007f, 0x11),
-            (ORA_IND_X, 0x20, 0x00, 0x00, 0x007f, 0x11),
-            (ORA_IND_X, 0x20, 0x00, 0x00, 0x007f, 0x11),
-            (ORA_IND_X, 0x20, 0x00, 0x00, 0x007f, 0x11),
-        ];
-
-        for i in 0..test_data.len() {
-            // setup the opcode
-            let data = &test_data[i];
-            cpu.cpu_mem.write(CPU_ADDR_PRG_ROM as u16, data.0);
-            cpu.cpu_mem.write(CPU_ADDR_PRG_ROM as u16 + 1, data.2);
-            cpu.accum = data.1;
-            cpu.irx = data.3;
-            cpu.cpu_mem.write_zp_idx(data.2, data.3, data.4 as u8);
-            cpu.cpu_mem
-                .write_zp_idx(data.2 + 1, data.3, (data.4 >> 8) as u8);
-            cpu.cpu_mem.write(data.4, data.5);
-
-            cpu.process();
-
-            // expected value is the value at the address | accumulator
-            let expected_val = data.5 | data.1;
-            println!("{:#02x} == {:#02x}", data.4, expected_val);
-            assert!(cpu.cpu_mem.read(data.4) == expected_val)
-        }
-    }
-
+    // HI 0
     #[test]
     fn test_ora_zpg() {}
 
@@ -897,4 +1094,445 @@ mod tests {
 
     #[test]
     fn test_asl_abs() {}
+
+    // HI 1
+    #[test]
+    fn test_bpl() {}
+
+    #[test]
+    fn test_ora_ind_y() {}
+
+    #[test]
+    fn test_ora_zpg_x() {}
+
+    #[test]
+    fn test_asl_zpg_x() {}
+
+    #[test]
+    fn test_clc_imp() {}
+
+    #[test]
+    fn test_ora_abs_y() {}
+
+    #[test]
+    fn test_ora_abs_x() {}
+
+    #[test]
+    fn test_asl_abs_x() {}
+
+    // HI 2
+    #[test]
+    fn test_jsr_abs() {}
+
+    #[test]
+    fn test_and_ind_x() {}
+
+    #[test]
+    fn test_bit_zpg() {}
+
+    #[test]
+    fn test_and_zpg() {}
+
+    #[test]
+    fn test_rol_zpg() {}
+
+    #[test]
+    fn test_plp() {}
+
+    #[test]
+    fn test_and_imm() {}
+
+    #[test]
+    fn test_rol_a() {}
+
+    #[test]
+    fn test_bit_abs() {}
+
+    #[test]
+    fn test_and_abs() {}
+
+    #[test]
+    fn test_rol_abs() {}
+
+    // HI 3
+    #[test]
+    fn test_bmi_rel() {}
+
+    #[test]
+    fn test_and_ind_y() {}
+
+    #[test]
+    fn test_and_zpg_x() {}
+
+    #[test]
+    fn test_rol_zpg_x() {}
+
+    #[test]
+    fn test_sec() {}
+
+    #[test]
+    fn test_and_abs_y() {}
+
+    #[test]
+    fn test_and_abs_x() {}
+
+    #[test]
+    fn test_rol_abs_x() {}
+
+    // HI 4
+    #[test]
+    fn test_rti() {}
+
+    #[test]
+    fn test_eor_ind_x() {}
+
+    #[test]
+    fn test_eor_zpg() {}
+
+    #[test]
+    fn test_lsr_zpg() {}
+
+    #[test]
+    fn test_pha() {}
+
+    #[test]
+    fn test_eor_imm() {}
+
+    #[test]
+    fn test_lsr_a() {}
+
+    #[test]
+    fn test_jmp_abs() {}
+
+    #[test]
+    fn test_eor_abs() {}
+
+    #[test]
+    fn test_lsr_abs() {}
+
+    // HI 5
+    #[test]
+    fn test_bvc_rel() {}
+
+    #[test]
+    fn test_eor_in_y() {}
+
+    #[test]
+    fn test_eor_zpg_x() {}
+
+    #[test]
+    fn test_lsr_zpg_x() {}
+
+    #[test]
+    fn test_cli() {}
+
+    #[test]
+    fn test_eor_abs_y() {}
+
+    #[test]
+    fn test_eor_abs_x() {}
+
+    #[test]
+    fn test_lsr_abs_x() {}
+
+    // HI 6
+    #[test]
+    fn test_rts() {}
+
+    #[test]
+    fn test_adc_ind_x() {}
+
+    #[test]
+    fn test_adc_zpg() {}
+
+    #[test]
+    fn test_ror_zpg() {}
+
+    #[test]
+    fn test_pla() {}
+
+    #[test]
+    fn test_adc_imm() {}
+
+    #[test]
+    fn test_ror_a() {}
+
+    #[test]
+    fn test_jmp_ind() {}
+
+    #[test]
+    fn test_adc_abs() {}
+
+    #[test]
+    fn test_ror_abs() {}
+
+    // HI 7
+    #[test]
+    fn test_bvs_rel() {}
+
+    #[test]
+    fn test_adc_ind_y() {}
+
+    #[test]
+    fn test_adc_zpg_x() {}
+
+    #[test]
+    fn test_ror_zpg_x() {}
+
+    #[test]
+    fn test_sei() {}
+
+    #[test]
+    fn test_adc_abs_y() {}
+
+    #[test]
+    fn test_adc_abs_x() {}
+
+    #[test]
+    fn test_ror_abs_x() {}
+
+    // HI 8
+    #[test]
+    fn test_sta_ind_x() {}
+
+    #[test]
+    fn test_sty_zpg() {}
+
+    #[test]
+    fn test_sta_zpg() {}
+
+    #[test]
+    fn test_stx_zpg() {}
+
+    #[test]
+    fn test_dey() {}
+
+    #[test]
+    fn test_txa() {}
+
+    #[test]
+    fn test_sty_abs() {}
+
+    #[test]
+    fn test_sta_abs() {}
+
+    #[test]
+    fn test_stx_abs() {}
+
+    // HI 9
+    #[test]
+    fn test_bcc_rel() {}
+
+    #[test]
+    fn test_sta_ind_y() {}
+
+    #[test]
+    fn test_sty_zpg_x() {}
+
+    #[test]
+    fn test_sta_zpg_x() {}
+
+    #[test]
+    fn test_stx_zpg_y() {}
+
+    #[test]
+    fn test_tya() {}
+
+    #[test]
+    fn test_sta_abs_y() {}
+
+    #[test]
+    fn test_txs() {}
+
+    #[test]
+    fn test_sta_abs_x() {}
+
+    // HI A
+    #[test]
+    fn test_ldy_imm() {}
+
+    #[test]
+    fn test_lda_ind_x() {}
+
+    #[test]
+    fn test_ldx_imm() {}
+
+    #[test]
+    fn test_ldy_zpg() {}
+
+    #[test]
+    fn test_lda_zpg() {}
+
+    #[test]
+    fn test_ldx_zpg() {}
+
+    #[test]
+    fn test_tay() {}
+
+    #[test]
+    fn test_lda_imm() {}
+
+    #[test]
+    fn test_tax() {}
+
+    #[test]
+    fn test_ldy_abs() {}
+
+    #[test]
+    fn test_lda_abs() {}
+
+    #[test]
+    fn test_ldx_abs() {}
+
+    // HI B
+    #[test]
+    fn test_bcs_rel() {}
+
+    #[test]
+    fn test_lda_ind_y() {}
+
+    #[test]
+    fn test_ldy_zpg_x() {}
+
+    #[test]
+    fn test_lda_zpg_x() {}
+
+    #[test]
+    fn test_ldx_zpg_y() {}
+
+    #[test]
+    fn test_clv() {}
+
+    #[test]
+    fn test_lda_abs_y() {}
+
+    #[test]
+    fn test_tsx() {}
+
+    #[test]
+    fn test_ldy_abs_x() {}
+
+    #[test]
+    fn test_lda_abs_x() {}
+
+    #[test]
+    fn test_ldx_abs_y() {}
+
+    // HI C
+    #[test]
+    fn test_cpy_imm() {}
+
+    #[test]
+    fn test_cmp_ind_x() {}
+
+    #[test]
+    fn test_cpy_zpg() {}
+
+    #[test]
+    fn test_cmp_zpg() {}
+
+    #[test]
+    fn test_dec_zpg() {}
+
+    #[test]
+    fn test_iny() {}
+
+    #[test]
+    fn test_cmp_imm() {}
+
+    #[test]
+    fn test_dex() {}
+
+    #[test]
+    fn test_cpy_abs() {}
+
+    #[test]
+    fn test_cmp_abs() {}
+
+    #[test]
+    fn test_dec_abs() {}
+
+    // HI D
+    #[test]
+    fn test_bne_rel() {}
+
+    #[test]
+    fn test_cmp_ind_y() {}
+
+    #[test]
+    fn test_cmp_zpg_x() {}
+
+    #[test]
+    fn test_dec_zpg_x() {}
+
+    #[test]
+    fn test_cld() {}
+
+    #[test]
+    fn test_cmp_abs_y() {}
+
+    #[test]
+    fn test_cmp_abs_x() {}
+
+    #[test]
+    fn test_dec_abs_x() {}
+
+    // HI E
+    #[test]
+    fn test_cpx_imm() {}
+
+    #[test]
+    fn test_sbc_ind_x() {}
+
+    #[test]
+    fn test_cpx_zpg() {}
+
+    #[test]
+    fn test_sbc_zpg() {}
+
+    #[test]
+    fn test_inc_zpg() {}
+
+    #[test]
+    fn test_inx() {}
+
+    #[test]
+    fn test_sbc_imm() {}
+
+    #[test]
+    fn test_nop() {}
+
+    #[test]
+    fn test_cpx_abs() {}
+
+    #[test]
+    fn test_sbc_abs() {}
+
+    #[test]
+    fn test_inc_abs() {}
+
+    // HI F
+    #[test]
+    fn test_beq_rel() {}
+
+    #[test]
+    fn test_sbc_ind_y() {}
+
+    #[test]
+    fn test_sbc_zpg_x() {}
+
+    #[test]
+    fn test_inc_zpg_x() {}
+
+    #[test]
+    fn test_sed() {}
+
+    #[test]
+    fn test_sbc_abs_y() {}
+
+    #[test]
+    fn test_sbc_abs_x() {}
+
+    #[test]
+    fn test_inc_abs_x() {}
 }
