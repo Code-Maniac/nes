@@ -1,11 +1,13 @@
 use super::memory::CpuMemory;
-use super::memory::Memory;
+use super::memory::CPU_MEM_PAGE_SIZE;
 use super::opcodes::*;
+use std::num::Wrapping;
 
 // address of registers within the status register
 const STATUS_REG_ADDR_CARRY: u8 = 0;
 const STATUS_REG_ADDR_ZERO: u8 = 1;
 const STATUS_REG_ADDR_INTERRUPT: u8 = 2;
+const STATUS_REG_ADDR_DECIMAL: u8 = 3;
 const STATUS_REG_ADDR_BREAK: u8 = 4;
 const STATUS_REG_ADDR_OVERFLOW: u8 = 6;
 const STATUS_REG_ADDR_NEGATIVE: u8 = 7;
@@ -38,7 +40,7 @@ pub struct Ricoh2A03<'a> {
     // 0 - Carry flag
     // 1 - Zero flag
     // 2 - Interrupt disable
-    // 3 - Decimal mode (unused)
+    // 3 - Decimal mode
     // 4 - Break command
     // 5 -
     // 6 - Overflow flag
@@ -56,6 +58,9 @@ pub struct Ricoh2A03<'a> {
 
     // the cpu memory map
     cpu_mem: &'a mut CpuMemory,
+
+    // the number of cpu cycles that the current opcode has taken
+    opcode_cycles: u8,
 }
 
 impl<'a> Ricoh2A03<'a> {
@@ -70,7 +75,27 @@ impl<'a> Ricoh2A03<'a> {
             irx: 0,
             iry: 0,
             cpu_mem,
+            opcode_cycles: 0,
         }
+    }
+
+    // get the page of the program counter (used to check crossing of page
+    // boundaries during branches)
+    fn pc_page(&self) -> u16 {
+        self.pc % CPU_MEM_PAGE_SIZE as u16
+    }
+
+    // NOTE: cycles code should be moved to CpuClock
+    fn add_cycles(&mut self, num: u8) {
+        // happy to let a panic occur here as no single cpu opcode can take more
+        // than around 10 cycles
+        self.opcode_cycles += num;
+    }
+
+    pub fn pop_cycles(&mut self) -> u8 {
+        let output = self.opcode_cycles;
+        self.opcode_cycles = 0;
+        output
     }
 
     // get and set the carry flag
@@ -97,6 +122,14 @@ impl<'a> Ricoh2A03<'a> {
         self.sr |= (val as u8) << STATUS_REG_ADDR_INTERRUPT;
     }
 
+    // get and set the decimal flag
+    fn decimal_flag(&self) -> bool {
+        ((self.sr >> STATUS_REG_ADDR_DECIMAL) & 0x1) != 0
+    }
+    fn set_decimal_flag(&mut self, val: bool) {
+        self.sr |= (val as u8) << STATUS_REG_ADDR_DECIMAL;
+    }
+
     // get and set break command
     fn break_command(&self) -> bool {
         ((self.sr >> STATUS_REG_ADDR_BREAK) & 0x1) != 0
@@ -119,6 +152,12 @@ impl<'a> Ricoh2A03<'a> {
     }
     fn set_negative_flag(&mut self, val: bool) {
         self.sr |= (val as u8) << STATUS_REG_ADDR_NEGATIVE;
+    }
+
+    // set the negative and zero flags based on the value
+    fn set_nz_flags(&mut self, val: u8) {
+        self.set_zero_flag(val == 0);
+        self.set_negative_flag(val & 0x80 > 0);
     }
 
     // PC and register dependant read operations
@@ -278,8 +317,8 @@ impl<'a> Ricoh2A03<'a> {
             ROL_ABS => {
                 self.rol_abs();
             }
-            BMI_REL => {
-                self.bmi_rel();
+            BMI => {
+                self.bmi();
             }
             AND_IND_Y => {
                 self.and_ind_y();
@@ -332,11 +371,11 @@ impl<'a> Ricoh2A03<'a> {
             LSR_ABS => {
                 self.lsr_abs();
             }
-            BVC_REL => {
-                self.bvc_rel();
+            BVC => {
+                self.bvc();
             }
-            EOR_IN_Y => {
-                self.eor_in_y();
+            EOR_IND_Y => {
+                self.eor_ind_y();
             }
             EOR_ZPG_X => {
                 self.eor_zpg_x();
@@ -386,8 +425,8 @@ impl<'a> Ricoh2A03<'a> {
             ROR_ABS => {
                 self.ror_abs();
             }
-            BVS_REL => {
-                self.bvs_rel();
+            BVS => {
+                self.bvs();
             }
             ADC_IND_Y => {
                 self.adc_ind_y();
@@ -437,8 +476,8 @@ impl<'a> Ricoh2A03<'a> {
             STX_ABS => {
                 self.stx_abs();
             }
-            BCC_REL => {
-                self.bcc_rel();
+            BCC => {
+                self.bcc();
             }
             STA_IND_Y => {
                 self.sta_ind_y();
@@ -500,8 +539,8 @@ impl<'a> Ricoh2A03<'a> {
             LDX_ABS => {
                 self.ldx_abs();
             }
-            BCS_REL => {
-                self.bcs_rel();
+            BCS => {
+                self.bcs();
             }
             LDA_IND_Y => {
                 self.lda_ind_y();
@@ -566,8 +605,8 @@ impl<'a> Ricoh2A03<'a> {
             DEC_ABS => {
                 self.dec_abs();
             }
-            BNE_REL => {
-                self.bne_rel();
+            BNE => {
+                self.bne();
             }
             CMP_IND_Y => {
                 self.cmp_ind_y();
@@ -623,8 +662,8 @@ impl<'a> Ricoh2A03<'a> {
             INC_ABS => {
                 self.inc_abs();
             }
-            BEQ_REL => {
-                self.beq_rel();
+            BEQ => {
+                self.beq();
             }
             SBC_IND_Y => {
                 self.sbc_ind_y();
@@ -659,19 +698,192 @@ impl<'a> Ricoh2A03<'a> {
     // N, Z
     fn ora(&mut self, mem_val: u8) {
         self.acc |= mem_val;
-
-        // set zero and negative flags
-        self.set_zero_flag(self.acc == 0);
-        self.set_negative_flag(self.acc & 0x80 > 0);
+        self.set_nz_flags(self.acc);
     }
 
     // and affects the following registers:
     // N, Z
     fn and(&mut self, mem_val: u8) {
         self.acc |= mem_val;
+        self.set_nz_flags(self.acc);
+    }
 
-        self.set_zero_flag(self.acc == 0);
-        self.set_negative_flag(self.acc & 0x80 > 0);
+    // xor affects the following registers:
+    // N, Z
+    fn eor(&mut self, mem_val: u8) {
+        self.acc ^= mem_val;
+        self.set_nz_flags(self.acc);
+    }
+
+    // asl affects the following registers:
+    // N, Z, C
+    // Shifted out bit is stored in carry flag
+    // return the shifted value
+    fn asl(&mut self, val: u8) -> u8 {
+        let bit = val >> 7;
+        let shift_val = val << 1;
+
+        self.set_nz_flags(val);
+        self.set_carry_flag(bit != 0);
+        shift_val
+    }
+
+    // lsr affects the following registers
+    // N, Z, C
+    // Shifted out bit is stored in carry flag
+    // return the shifted value
+    fn lsr(&mut self, val: u8) -> u8 {
+        let bit = val & 0x1;
+        let shift_val = val >> 1;
+
+        self.set_nz_flags(shift_val);
+        self.set_carry_flag(bit != 0);
+        shift_val
+    }
+
+    // rol affects the following registers
+    // N, Z, C
+    // Carry flag is shifted in on the right
+    // Shifted out bit is stored in carry flag
+    // return the shifted value
+    fn rol(&mut self, val: u8) -> u8 {
+        let bit = val >> 7;
+        let rot_val = (val << 1) | self.carry_flag() as u8;
+
+        self.set_nz_flags(rot_val);
+        self.set_carry_flag(bit != 0);
+        rot_val
+    }
+
+    // ror affects the following registers
+    // N, Z, C
+    // Carry flag is shifting in on the left
+    // Shifted out bit is stored in carry flag
+    // return the shifted value
+    fn ror(&mut self, val: u8) -> u8 {
+        let bit = val & 0x1;
+        let rot_val = (val >> 1) | ((self.carry_flag() as u8) << 7);
+
+        self.set_nz_flags(rot_val);
+        self.set_carry_flag(bit != 0);
+        rot_val
+    }
+
+    // lda affects the following registers:
+    // N, Z
+    fn lda(&mut self, mem_val: u8) {
+        self.acc = mem_val;
+        self.set_nz_flags(self.acc);
+    }
+
+    // ldx affects the following registers:
+    // N, Z
+    fn ldx(&mut self, mem_val: u8) {
+        self.irx = mem_val;
+        self.set_nz_flags(self.irx);
+    }
+
+    // ldy affects the following registers:
+    // N, Z
+    fn ldy(&mut self, mem_val: u8) {
+        self.iry = mem_val;
+        self.set_nz_flags(self.iry);
+    }
+
+    // perform increment operation and return modified value
+    fn inc_val(&mut self, val: u8) -> u8 {
+        let mut wrap_val = Wrapping(val);
+        wrap_val += 1;
+        self.set_nz_flags(wrap_val.0);
+        wrap_val.0
+    }
+
+    // perform decrement operation and return modified value
+    fn dec_val(&mut self, val: u8) -> u8 {
+        let mut wrap_val = Wrapping(val);
+        wrap_val -= 1;
+        self.set_nz_flags(wrap_val.0);
+        wrap_val.0
+    }
+
+    // perform bit operation
+    // set negative flag to bit 7 of val
+    // set overflow flag to bit 6 of val
+    // set zero flag to result of val AND accumulator
+    fn bit(&mut self, val: u8) {
+        self.set_negative_flag((val >> 7) == 1);
+        self.set_overflow_flag(((val >> 6) & 0x1) == 1);
+        self.set_zero_flag(val & self.acc != 0);
+    }
+
+    // compare memory with accumulator
+    // set N, Z, C flags
+    fn cmp(&mut self, mem_val: u8) {
+        self.compare(mem_val, self.acc);
+    }
+
+    // compare memory with x index reg
+    // set N, Z, C flags
+    fn cpx(&mut self, mem_val: u8) {
+        self.compare(mem_val, self.irx);
+    }
+
+    // compare memory with y index reg
+    // set N, Z, C flags
+    fn cpy(&mut self, mem_val: u8) {
+        self.compare(mem_val, self.iry);
+    }
+
+    // utility function for the above 3
+    fn compare(&mut self, mem_val: u8, reg_val: u8) {
+        let sign_bit = (reg_val.wrapping_sub(mem_val)) >> 7;
+
+        let zcn: (bool, bool, bool);
+        if reg_val < mem_val {
+            zcn = (false, false, sign_bit == 1)
+        } else if reg_val > mem_val {
+            zcn = (false, true, sign_bit == 1)
+        } else {
+            zcn = (true, true, true);
+        }
+
+        // set the flags
+        self.set_zero_flag(zcn.0);
+        self.set_carry_flag(zcn.1);
+        self.set_negative_flag(zcn.2);
+    }
+
+    // modify the program counter by the offset
+    fn branch(&mut self, val: u8) {
+        let pc_page = self.pc_page();
+        if val >> 7 == 1 {
+            // value is negative so convert
+            let sub_val = ((val & 0x7F) ^ 0x7F) + 1;
+            self.pc = self.pc.wrapping_sub(sub_val as u16);
+        } else {
+            // value is positive
+            self.pc = self.pc.wrapping_add(val as u16);
+        }
+
+        // check that page boundary was crossed in prg memory
+        // if it has then we add an additional 2 cycles
+        // otherwise just 1 cycle
+        if self.pc_page() != pc_page {
+            // a page boundary was crossed
+            self.add_cycles(2);
+        } else {
+            self.add_cycles(1);
+        }
+    }
+
+    // check condition. if true then branch
+    fn cond_branch(&mut self, cond: bool) {
+        if cond {
+            self.branch(self.read_imm())
+        } else {
+            self.pc += 2;
+        }
+        self.add_cycles(2); // always takes an additional 2 cycles
     }
 
     // HI 0
@@ -693,7 +905,9 @@ impl<'a> Ricoh2A03<'a> {
         self.ora(self.read_imm());
     }
 
-    fn asl_a(&mut self) {}
+    fn asl_a(&mut self) {
+        self.acc = self.asl(self.acc);
+    }
 
     fn ora_abs(&mut self) {
         self.ora(self.read_abs());
@@ -702,7 +916,9 @@ impl<'a> Ricoh2A03<'a> {
     fn asl_abs(&mut self) {}
 
     // HI 1
-    fn bpl(&mut self) {}
+    fn bpl(&mut self) {
+        self.cond_branch(!self.negative_flag());
+    }
 
     fn ora_ind_y(&mut self) {
         self.ora(self.read_ind_y());
@@ -714,7 +930,10 @@ impl<'a> Ricoh2A03<'a> {
 
     fn asl_zpg_x(&mut self) {}
 
-    fn clc_imp(&mut self) {}
+    fn clc_imp(&mut self) {
+        // clear the carry flag
+        self.set_carry_flag(false);
+    }
 
     fn ora_abs_y(&mut self) {
         self.ora(self.read_abs_y());
@@ -733,7 +952,9 @@ impl<'a> Ricoh2A03<'a> {
         self.and(self.read_ind_x());
     }
 
-    fn bit_zpg(&mut self) {}
+    fn bit_zpg(&mut self) {
+        self.bit(self.read_zpg());
+    }
 
     fn and_zpg(&mut self) {
         self.and(self.read_zpg());
@@ -747,9 +968,13 @@ impl<'a> Ricoh2A03<'a> {
         self.and(self.read_imm());
     }
 
-    fn rol_a(&mut self) {}
+    fn rol_a(&mut self) {
+        self.acc = self.rol(self.acc);
+    }
 
-    fn bit_abs(&mut self) {}
+    fn bit_abs(&mut self) {
+        self.bit(self.read_abs());
+    }
 
     fn and_abs(&mut self) {
         self.and(self.read_abs());
@@ -758,7 +983,9 @@ impl<'a> Ricoh2A03<'a> {
     fn rol_abs(&mut self) {}
 
     // HI 3
-    fn bmi_rel(&mut self) {}
+    fn bmi(&mut self) {
+        self.cond_branch(self.negative_flag());
+    }
 
     fn and_ind_y(&mut self) {
         self.and(self.read_ind_y());
@@ -770,7 +997,9 @@ impl<'a> Ricoh2A03<'a> {
 
     fn rol_zpg_x(&mut self) {}
 
-    fn sec(&mut self) {}
+    fn sec(&mut self) {
+        self.set_carry_flag(true);
+    }
 
     fn and_abs_y(&mut self) {
         self.and(self.read_abs_y());
@@ -785,38 +1014,60 @@ impl<'a> Ricoh2A03<'a> {
     // HI 4
     fn rti(&mut self) {}
 
-    fn eor_ind_x(&mut self) {}
+    fn eor_ind_x(&mut self) {
+        self.eor(self.read_ind_x());
+    }
 
-    fn eor_zpg(&mut self) {}
+    fn eor_zpg(&mut self) {
+        self.eor(self.read_zpg());
+    }
 
     fn lsr_zpg(&mut self) {}
 
     fn pha(&mut self) {}
 
-    fn eor_imm(&mut self) {}
+    fn eor_imm(&mut self) {
+        self.eor(self.read_imm());
+    }
 
-    fn lsr_a(&mut self) {}
+    fn lsr_a(&mut self) {
+        self.acc = self.lsr(self.acc);
+    }
 
     fn jmp_abs(&mut self) {}
 
-    fn eor_abs(&mut self) {}
+    fn eor_abs(&mut self) {
+        self.eor(self.read_abs());
+    }
 
     fn lsr_abs(&mut self) {}
 
     // HI 5
-    fn bvc_rel(&mut self) {}
+    fn bvc(&mut self) {
+        self.cond_branch(!self.overflow_flag());
+    }
 
-    fn eor_in_y(&mut self) {}
+    fn eor_ind_y(&mut self) {
+        self.eor(self.read_ind_y());
+    }
 
-    fn eor_zpg_x(&mut self) {}
+    fn eor_zpg_x(&mut self) {
+        self.eor(self.read_zpg_x());
+    }
 
     fn lsr_zpg_x(&mut self) {}
 
-    fn cli(&mut self) {}
+    fn cli(&mut self) {
+        self.set_interrupt_disable(false);
+    }
 
-    fn eor_abs_y(&mut self) {}
+    fn eor_abs_y(&mut self) {
+        self.eor(self.read_abs_y());
+    }
 
-    fn eor_abs_x(&mut self) {}
+    fn eor_abs_x(&mut self) {
+        self.eor(self.read_abs_x());
+    }
 
     fn lsr_abs_x(&mut self) {}
 
@@ -833,7 +1084,9 @@ impl<'a> Ricoh2A03<'a> {
 
     fn adc_imm(&mut self) {}
 
-    fn ror_a(&mut self) {}
+    fn ror_a(&mut self) {
+        self.acc = self.ror(self.acc);
+    }
 
     fn jmp_ind(&mut self) {}
 
@@ -842,7 +1095,9 @@ impl<'a> Ricoh2A03<'a> {
     fn ror_abs(&mut self) {}
 
     // HI 7
-    fn bvs_rel(&mut self) {}
+    fn bvs(&mut self) {
+        self.cond_branch(self.overflow_flag());
+    }
 
     fn adc_ind_y(&mut self) {}
 
@@ -850,7 +1105,9 @@ impl<'a> Ricoh2A03<'a> {
 
     fn ror_zpg_x(&mut self) {}
 
-    fn sei(&mut self) {}
+    fn sei(&mut self) {
+        self.set_interrupt_disable(true);
+    }
 
     fn adc_abs_y(&mut self) {}
 
@@ -867,9 +1124,14 @@ impl<'a> Ricoh2A03<'a> {
 
     fn stx_zpg(&mut self) {}
 
-    fn dey(&mut self) {}
+    fn dey(&mut self) {
+        self.iry = self.dec_val(self.iry);
+    }
 
-    fn txa(&mut self) {}
+    fn txa(&mut self) {
+        self.acc = self.irx;
+        self.set_nz_flags(self.acc);
+    }
 
     fn sty_abs(&mut self) {}
 
@@ -878,7 +1140,9 @@ impl<'a> Ricoh2A03<'a> {
     fn stx_abs(&mut self) {}
 
     // HI 9
-    fn bcc_rel(&mut self) {}
+    fn bcc(&mut self) {
+        self.cond_branch(!self.carry_flag());
+    }
 
     fn sta_ind_y(&mut self) {}
 
@@ -888,127 +1152,221 @@ impl<'a> Ricoh2A03<'a> {
 
     fn stx_zpg_y(&mut self) {}
 
-    fn tya(&mut self) {}
+    fn tya(&mut self) {
+        self.acc = self.iry;
+        self.set_nz_flags(self.acc);
+    }
 
     fn sta_abs_y(&mut self) {}
 
-    fn txs(&mut self) {}
+    fn txs(&mut self) {
+        self.sr = self.irx;
+    }
 
     fn sta_abs_x(&mut self) {}
 
     // HI A
-    fn ldy_imm(&mut self) {}
+    fn ldy_imm(&mut self) {
+        self.ldy(self.read_imm());
+    }
 
-    fn lda_ind_x(&mut self) {}
+    fn lda_ind_x(&mut self) {
+        self.lda(self.read_ind_x());
+    }
 
-    fn ldx_imm(&mut self) {}
+    fn ldx_imm(&mut self) {
+        self.ldx(self.read_imm());
+    }
 
-    fn ldy_zpg(&mut self) {}
+    fn ldy_zpg(&mut self) {
+        self.ldy(self.read_zpg());
+    }
 
-    fn lda_zpg(&mut self) {}
+    fn lda_zpg(&mut self) {
+        self.lda(self.read_zpg());
+    }
 
-    fn ldx_zpg(&mut self) {}
+    fn ldx_zpg(&mut self) {
+        self.ldx(self.read_zpg());
+    }
 
-    fn tay(&mut self) {}
+    fn tay(&mut self) {
+        self.iry = self.acc;
+        self.set_nz_flags(self.iry);
+    }
 
-    fn lda_imm(&mut self) {}
+    fn lda_imm(&mut self) {
+        self.lda(self.read_imm());
+    }
 
-    fn tax(&mut self) {}
+    fn tax(&mut self) {
+        self.irx = self.acc;
+        self.set_nz_flags(self.irx);
+    }
 
-    fn ldy_abs(&mut self) {}
+    fn ldy_abs(&mut self) {
+        self.ldy(self.read_abs());
+    }
 
-    fn lda_abs(&mut self) {}
+    fn lda_abs(&mut self) {
+        self.lda(self.read_abs());
+    }
 
-    fn ldx_abs(&mut self) {}
+    fn ldx_abs(&mut self) {
+        self.ldx(self.read_abs());
+    }
 
     // HI B
-    fn bcs_rel(&mut self) {}
+    fn bcs(&mut self) {
+        self.cond_branch(self.carry_flag());
+    }
 
-    fn lda_ind_y(&mut self) {}
+    fn lda_ind_y(&mut self) {
+        self.lda(self.read_ind_y());
+    }
 
-    fn ldy_zpg_x(&mut self) {}
+    fn ldy_zpg_x(&mut self) {
+        self.ldy(self.read_zpg_x());
+    }
 
-    fn lda_zpg_x(&mut self) {}
+    fn lda_zpg_x(&mut self) {
+        self.lda(self.read_zpg_x());
+    }
 
-    fn ldx_zpg_y(&mut self) {}
+    fn ldx_zpg_y(&mut self) {
+        self.ldx(self.read_zpg_y());
+    }
 
-    fn clv(&mut self) {}
+    fn clv(&mut self) {
+        self.set_overflow_flag(false);
+    }
 
-    fn lda_abs_y(&mut self) {}
+    fn lda_abs_y(&mut self) {
+        self.lda(self.read_abs_y());
+    }
 
-    fn tsx(&mut self) {}
+    fn tsx(&mut self) {
+        self.irx = self.sp;
+        self.set_nz_flags(self.irx);
+    }
 
-    fn ldy_abs_x(&mut self) {}
+    fn ldy_abs_x(&mut self) {
+        self.ldy(self.read_abs_x());
+    }
 
-    fn lda_abs_x(&mut self) {}
+    fn lda_abs_x(&mut self) {
+        self.lda(self.read_abs_x());
+    }
 
-    fn ldx_abs_y(&mut self) {}
+    fn ldx_abs_y(&mut self) {
+        self.ldx(self.read_abs_y());
+    }
 
     // HI C
-    fn cpy_imm(&mut self) {}
+    fn cpy_imm(&mut self) {
+        self.cpy(self.read_imm());
+    }
 
-    fn cmp_ind_x(&mut self) {}
+    fn cmp_ind_x(&mut self) {
+        self.cmp(self.read_ind_x());
+    }
 
-    fn cpy_zpg(&mut self) {}
+    fn cpy_zpg(&mut self) {
+        self.cpy(self.read_zpg());
+    }
 
-    fn cmp_zpg(&mut self) {}
+    fn cmp_zpg(&mut self) {
+        self.cmp(self.read_zpg());
+    }
 
     fn dec_zpg(&mut self) {}
 
-    fn iny(&mut self) {}
+    fn iny(&mut self) {
+        self.iry = self.inc_val(self.iry);
+    }
 
-    fn cmp_imm(&mut self) {}
+    fn cmp_imm(&mut self) {
+        self.cmp(self.read_imm());
+    }
 
-    fn dex(&mut self) {}
+    fn dex(&mut self) {
+        self.irx = self.dec_val(self.irx);
+    }
 
-    fn cpy_abs(&mut self) {}
+    fn cpy_abs(&mut self) {
+        self.cpy(self.read_abs());
+    }
 
-    fn cmp_abs(&mut self) {}
+    fn cmp_abs(&mut self) {
+        self.cmp(self.read_abs());
+    }
 
     fn dec_abs(&mut self) {}
 
     // HI D
-    fn bne_rel(&mut self) {}
+    fn bne(&mut self) {
+        self.cond_branch(!self.zero_flag());
+    }
 
-    fn cmp_ind_y(&mut self) {}
+    fn cmp_ind_y(&mut self) {
+        self.cmp(self.read_ind_y());
+    }
 
-    fn cmp_zpg_x(&mut self) {}
+    fn cmp_zpg_x(&mut self) {
+        self.cmp(self.read_zpg_x());
+    }
 
     fn dec_zpg_x(&mut self) {}
 
-    fn cld(&mut self) {}
+    fn cld(&mut self) {
+        self.set_decimal_flag(false);
+    }
 
-    fn cmp_abs_y(&mut self) {}
+    fn cmp_abs_y(&mut self) {
+        self.cmp(self.read_abs_y());
+    }
 
-    fn cmp_abs_x(&mut self) {}
+    fn cmp_abs_x(&mut self) {
+        self.cmp(self.read_abs_x());
+    }
 
     fn dec_abs_x(&mut self) {}
 
     // HI E
-    fn cpx_imm(&mut self) {}
+    fn cpx_imm(&mut self) {
+        self.cpx(self.read_imm());
+    }
 
     fn sbc_ind_x(&mut self) {}
 
-    fn cpx_zpg(&mut self) {}
+    fn cpx_zpg(&mut self) {
+        self.cpx(self.read_zpg());
+    }
 
     fn sbc_zpg(&mut self) {}
 
     fn inc_zpg(&mut self) {}
 
-    fn inx(&mut self) {}
+    fn inx(&mut self) {
+        self.irx = self.inc_val(self.irx);
+    }
 
     fn sbc_imm(&mut self) {}
 
     fn nop(&mut self) {}
 
-    fn cpx_abs(&mut self) {}
+    fn cpx_abs(&mut self) {
+        self.cpx(self.read_abs());
+    }
 
     fn sbc_abs(&mut self) {}
 
     fn inc_abs(&mut self) {}
 
     // HI F
-    fn beq_rel(&mut self) {}
+    fn beq(&mut self) {
+        self.cond_branch(self.zero_flag());
+    }
 
     fn sbc_ind_y(&mut self) {}
 
@@ -1016,7 +1374,9 @@ impl<'a> Ricoh2A03<'a> {
 
     fn inc_zpg_x(&mut self) {}
 
-    fn sed(&mut self) {}
+    fn sed(&mut self) {
+        self.set_decimal_flag(true);
+    }
 
     fn sbc_abs_y(&mut self) {}
 
@@ -1156,7 +1516,7 @@ mod tests {
 
     // HI 3
     #[test]
-    fn test_bmi_rel() {}
+    fn test_bmi() {}
 
     #[test]
     fn test_and_ind_y() {}
@@ -1212,10 +1572,10 @@ mod tests {
 
     // HI 5
     #[test]
-    fn test_bvc_rel() {}
+    fn test_bvc() {}
 
     #[test]
-    fn test_eor_in_y() {}
+    fn test_eor_ind_y() {}
 
     #[test]
     fn test_eor_zpg_x() {}
@@ -1268,7 +1628,7 @@ mod tests {
 
     // HI 7
     #[test]
-    fn test_bvs_rel() {}
+    fn test_bvs() {}
 
     #[test]
     fn test_adc_ind_y() {}
@@ -1321,7 +1681,7 @@ mod tests {
 
     // HI 9
     #[test]
-    fn test_bcc_rel() {}
+    fn test_bcc() {}
 
     #[test]
     fn test_sta_ind_y() {}
@@ -1386,7 +1746,7 @@ mod tests {
 
     // HI B
     #[test]
-    fn test_bcs_rel() {}
+    fn test_bcs() {}
 
     #[test]
     fn test_lda_ind_y() {}
@@ -1454,7 +1814,7 @@ mod tests {
 
     // HI D
     #[test]
-    fn test_bne_rel() {}
+    fn test_bne() {}
 
     #[test]
     fn test_cmp_ind_y() {}
@@ -1513,7 +1873,7 @@ mod tests {
 
     // HI F
     #[test]
-    fn test_beq_rel() {}
+    fn test_beq() {}
 
     #[test]
     fn test_sbc_ind_y() {}

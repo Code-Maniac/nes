@@ -42,7 +42,7 @@ pub const AND_ABS: u8 = 0x2D;
 pub const ROL_ABS: u8 = 0x2E;
 
 // HI 3
-pub const BMI_REL: u8 = 0x30;
+pub const BMI: u8 = 0x30;
 pub const AND_IND_Y: u8 = 0x31;
 pub const AND_ZPG_X: u8 = 0x35;
 pub const ROL_ZPG_X: u8 = 0x36;
@@ -64,8 +64,8 @@ pub const EOR_ABS: u8 = 0x4D;
 pub const LSR_ABS: u8 = 0x4E;
 
 // HI 5
-pub const BVC_REL: u8 = 0x50;
-pub const EOR_IN_Y: u8 = 0x51;
+pub const BVC: u8 = 0x50;
+pub const EOR_IND_Y: u8 = 0x51;
 pub const EOR_ZPG_X: u8 = 0x55;
 pub const LSR_ZPG_X: u8 = 0x56;
 pub const CLI: u8 = 0x58;
@@ -86,7 +86,7 @@ pub const ADC_ABS: u8 = 0x6D;
 pub const ROR_ABS: u8 = 0x6E;
 
 // HI 7
-pub const BVS_REL: u8 = 0x70;
+pub const BVS: u8 = 0x70;
 pub const ADC_IND_Y: u8 = 0x71;
 pub const ADC_ZPG_X: u8 = 0x75;
 pub const ROR_ZPG_X: u8 = 0x76;
@@ -107,7 +107,7 @@ pub const STA_ABS: u8 = 0x8D;
 pub const STX_ABS: u8 = 0x8E;
 
 // HI 9
-pub const BCC_REL: u8 = 0x90;
+pub const BCC: u8 = 0x90;
 pub const STA_IND_Y: u8 = 0x91;
 pub const STY_ZPG_X: u8 = 0x94;
 pub const STA_ZPG_X: u8 = 0x95;
@@ -132,7 +132,7 @@ pub const LDA_ABS: u8 = 0xAD;
 pub const LDX_ABS: u8 = 0xAF;
 
 // HI B
-pub const BCS_REL: u8 = 0xB0;
+pub const BCS: u8 = 0xB0;
 pub const LDA_IND_Y: u8 = 0xB1;
 pub const LDY_ZPG_X: u8 = 0xB4;
 pub const LDA_ZPG_X: u8 = 0xB5;
@@ -158,7 +158,7 @@ pub const CMP_ABS: u8 = 0xCD;
 pub const DEC_ABS: u8 = 0xCE;
 
 // HI D
-pub const BNE_REL: u8 = 0xD0;
+pub const BNE: u8 = 0xD0;
 pub const CMP_IND_Y: u8 = 0xD1;
 pub const CMP_ZPG_X: u8 = 0xD5;
 pub const DEC_ZPG_X: u8 = 0xD6;
@@ -181,7 +181,7 @@ pub const SBC_ABS: u8 = 0xED;
 pub const INC_ABS: u8 = 0xEE;
 
 // HI F
-pub const BEQ_REL: u8 = 0xF0;
+pub const BEQ: u8 = 0xF0;
 pub const SBC_IND_Y: u8 = 0xF1;
 pub const SBC_ZPG_X: u8 = 0xF5;
 pub const INC_ZPG_X: u8 = 0xF6;
@@ -229,7 +229,7 @@ mod tests {
         assert_eq!(AND_ABS, 0x2D);
         assert_eq!(ROL_ABS, 0x2E);
 
-        assert_eq!(BMI_REL, 0x30);
+        assert_eq!(BMI, 0x30);
         assert_eq!(AND_IND_Y, 0x31);
         assert_eq!(AND_ZPG_X, 0x35);
         assert_eq!(ROL_ZPG_X, 0x36);
@@ -249,8 +249,8 @@ mod tests {
         assert_eq!(EOR_ABS, 0x4D);
         assert_eq!(LSR_ABS, 0x4E);
 
-        assert_eq!(BVC_REL, 0x50);
-        assert_eq!(EOR_IN_Y, 0x51);
+        assert_eq!(BVC, 0x50);
+        assert_eq!(EOR_IND_Y, 0x51);
         assert_eq!(EOR_ZPG_X, 0x55);
         assert_eq!(LSR_ZPG_X, 0x56);
         assert_eq!(CLI, 0x58);
@@ -269,7 +269,7 @@ mod tests {
         assert_eq!(ADC_ABS, 0x6D);
         assert_eq!(ROR_ABS, 0x6E);
 
-        assert_eq!(BVS_REL, 0x70);
+        assert_eq!(BVS, 0x70);
         assert_eq!(ADC_IND_Y, 0x71);
         assert_eq!(ADC_ZPG_X, 0x75);
         assert_eq!(ROR_ZPG_X, 0x76);
@@ -288,7 +288,7 @@ mod tests {
         assert_eq!(STA_ABS, 0x8D);
         assert_eq!(STX_ABS, 0x8E);
 
-        assert_eq!(BCC_REL, 0x90);
+        assert_eq!(BCC, 0x90);
         assert_eq!(STA_IND_Y, 0x91);
         assert_eq!(STY_ZPG_X, 0x94);
         assert_eq!(STA_ZPG_X, 0x95);
@@ -311,7 +311,7 @@ mod tests {
         assert_eq!(LDA_ABS, 0xAD);
         assert_eq!(LDX_ABS, 0xAF);
 
-        assert_eq!(BCS_REL, 0xB0);
+        assert_eq!(BCS, 0xB0);
         assert_eq!(LDA_IND_Y, 0xB1);
         assert_eq!(LDY_ZPG_X, 0xB4);
         assert_eq!(LDA_ZPG_X, 0xB5);
@@ -335,7 +335,7 @@ mod tests {
         assert_eq!(CMP_ABS, 0xCD);
         assert_eq!(DEC_ABS, 0xCE);
 
-        assert_eq!(BNE_REL, 0xD0);
+        assert_eq!(BNE, 0xD0);
         assert_eq!(CMP_IND_Y, 0xD1);
         assert_eq!(CMP_ZPG_X, 0xD5);
         assert_eq!(DEC_ZPG_X, 0xD6);
@@ -356,7 +356,7 @@ mod tests {
         assert_eq!(SBC_ABS, 0xED);
         assert_eq!(INC_ABS, 0xEE);
 
-        assert_eq!(BEQ_REL, 0xF0);
+        assert_eq!(BEQ, 0xF0);
         assert_eq!(SBC_IND_Y, 0xF1);
         assert_eq!(SBC_ZPG_X, 0xF5);
         assert_eq!(INC_ZPG_X, 0xF6);
@@ -372,19 +372,19 @@ mod tests {
             BRK, ORA_IND_X, ORA_ZPG, ASL_ZPG, PHP, ORA_IMM, ASL_A, ORA_ABS, ASL_ABS, BPL,
             ORA_IND_Y, ORA_ZPG_X, ASL_ZPG_X, CLC_IMP, ORA_ABS_Y, ORA_ABS_X, ASL_ABS_X, JSR_ABS,
             AND_IND_X, BIT_ZPG, AND_ZPG, ROL_ZPG, PLP, AND_IMM, ROL_A, BIT_ABS, AND_ABS, ROL_ABS,
-            BMI_REL, AND_IND_Y, AND_ZPG_X, ROL_ZPG_X, SEC, AND_ABS_Y, AND_ABS_X, ROL_ABS_X, RTI,
-            EOR_IND_X, EOR_ZPG, LSR_ZPG, PHA, EOR_IMM, LSR_A, JMP_ABS, EOR_ABS, LSR_ABS, BVC_REL,
-            EOR_IN_Y, EOR_ZPG_X, LSR_ZPG_X, CLI, EOR_ABS_Y, EOR_ABS_X, LSR_ABS_X, RTS, ADC_IND_X,
-            ADC_ZPG, ROR_ZPG, PLA, ADC_IMM, ROR_A, JMP_IND, ADC_ABS, ROR_ABS, BVS_REL, ADC_IND_Y,
+            BMI, AND_IND_Y, AND_ZPG_X, ROL_ZPG_X, SEC, AND_ABS_Y, AND_ABS_X, ROL_ABS_X, RTI,
+            EOR_IND_X, EOR_ZPG, LSR_ZPG, PHA, EOR_IMM, LSR_A, JMP_ABS, EOR_ABS, LSR_ABS, BVC,
+            EOR_IND_Y, EOR_ZPG_X, LSR_ZPG_X, CLI, EOR_ABS_Y, EOR_ABS_X, LSR_ABS_X, RTS, ADC_IND_X,
+            ADC_ZPG, ROR_ZPG, PLA, ADC_IMM, ROR_A, JMP_IND, ADC_ABS, ROR_ABS, BVS, ADC_IND_Y,
             ADC_ZPG_X, ROR_ZPG_X, SEI, ADC_ABS_Y, ADC_ABS_X, ROR_ABS_X, STA_IND_X, STY_ZPG,
-            STA_ZPG, STX_ZPG, DEY, TXA, STY_ABS, STA_ABS, STX_ABS, BCC_REL, STA_IND_Y, STY_ZPG_X,
+            STA_ZPG, STX_ZPG, DEY, TXA, STY_ABS, STA_ABS, STX_ABS, BCC, STA_IND_Y, STY_ZPG_X,
             STA_ZPG_X, STX_ZPG_Y, TYA, STA_ABS_Y, TXS, STA_ABS_X, LDY_IMM, LDA_IND_X, LDX_IMM,
-            LDY_ZPG, LDA_ZPG, LDX_ZPG, TAY, LDA_IMM, TAX, LDY_ABS, LDA_ABS, LDX_ABS, BCS_REL,
+            LDY_ZPG, LDA_ZPG, LDX_ZPG, TAY, LDA_IMM, TAX, LDY_ABS, LDA_ABS, LDX_ABS, BCS,
             LDA_IND_Y, LDY_ZPG_X, LDA_ZPG_X, LDX_ZPG_Y, CLV, LDA_ABS_Y, TSX, LDY_ABS_X, LDA_ABS_X,
             LDX_ABS_Y, CPY_IMM, CMP_IND_X, CPY_ZPG, CMP_ZPG, DEC_ZPG, INY, CMP_IMM, DEX, CPY_ABS,
-            CMP_ABS, DEC_ABS, BNE_REL, CMP_IND_Y, CMP_ZPG_X, DEC_ZPG_X, CLD, CMP_ABS_Y, CMP_ABS_X,
+            CMP_ABS, DEC_ABS, BNE, CMP_IND_Y, CMP_ZPG_X, DEC_ZPG_X, CLD, CMP_ABS_Y, CMP_ABS_X,
             DEC_ABS_X, CPX_IMM, SBC_IND_X, CPX_ZPG, SBC_ZPG, INC_ZPG, INX, SBC_IMM, NOP, CPX_ABS,
-            SBC_ABS, INC_ABS, BEQ_REL, SBC_IND_Y, SBC_ZPG_X, INC_ZPG_X, SED, SBC_ABS_Y, SBC_ABS_X,
+            SBC_ABS, INC_ABS, BEQ, SBC_IND_Y, SBC_ZPG_X, INC_ZPG_X, SED, SBC_ABS_Y, SBC_ABS_X,
             INC_ABS_X,
         ];
 
