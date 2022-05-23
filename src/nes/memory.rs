@@ -16,7 +16,9 @@ pub const PPU_ADDR_NAME_TABLES: usize = 0x2000;
 pub const PPU_ADDR_PALETTES: usize = 0x3F00;
 
 pub trait Memory {
+    /// read from memory. Apply timing to the clock
     fn read(&self, addr: u16) -> u8;
+    /// write to memory. Apply timing to the clock
     fn write(&mut self, addr: u16, val: u8);
 }
 
@@ -78,6 +80,13 @@ impl CpuMemory {
         self.write(addr as u16, val);
     }
 
+    pub fn modify_zpg<F>(&mut self, f: &mut F, addr: u8)
+    where
+        F: FnMut(u8) -> u8,
+    {
+        self.write_zpg(addr, f(self.memory[addr as usize]));
+    }
+
     // read byte from indexed address in zero page
     pub fn read_zpg_x(&self, addr: u8, idx: u8) -> u8 {
         self.read(self.get_zpg_x(addr, idx))
@@ -86,6 +95,14 @@ impl CpuMemory {
     // write byte to indexed address in zero page
     pub fn write_zpg_x(&mut self, addr: u8, idx: u8, val: u8) {
         self.write(self.get_zpg_x(addr, val), val);
+    }
+
+    pub fn modify_zpg_x<F>(&mut self, f: F, addr: u8, idx: u8)
+    where
+        F: Fn(u8) -> u8,
+    {
+        let val = self.memory[self.get_zpg_x(addr, idx) as usize];
+        self.write_zpg_x(addr, idx, f(val));
     }
 
     // read absolute byte given 2 operands of the instruction
@@ -100,14 +117,34 @@ impl CpuMemory {
         self.write(addr, val);
     }
 
+    pub fn modify_abs<F>(&mut self, f: F, addr1: u8, addr2: u8)
+    where
+        F: Fn(u8) -> u8,
+    {
+        let val = self.memory[self.get_abs(addr1, addr2) as usize];
+        self.write_abs(addr1, addr2, f(val));
+    }
+
     // read absolute byte given 2 operands of instruction and index
     pub fn read_abs_x(&self, addr1: u8, addr2: u8, idx: u8) -> u8 {
+        self.read_abs_x_free(addr1, addr2, idx)
+    }
+
+    // read absolute byte given 2 operands of instruction and index
+    // ignore page boundary crossing for timings
+    pub fn read_abs_x_free(&self, addr1: u8, addr2: u8, idx: u8) -> u8 {
         let addr = self.get_abs_x(addr1, addr2, idx);
         self.read(addr)
     }
 
     // write absolute byte given 2 operands of instruction and index
     pub fn write_abs_x(&mut self, addr1: u8, addr2: u8, idx: u8, val: u8) {
+        self.write_abs_x_free(addr1, addr2, idx, val);
+    }
+
+    // write absolute byte given 2 operands of instruction and index
+    // ignore page boundary crossing for timings
+    pub fn write_abs_x_free(&mut self, addr1: u8, addr2: u8, idx: u8, val: u8) {
         let addr = self.get_abs_x(addr1, addr2, idx);
         self.write(addr, val);
     }
@@ -130,9 +167,28 @@ impl CpuMemory {
         self.write_abs(real_addr1, real_addr2, val);
     }
 
+    pub fn modify_ind_x<F>(&mut self, f: F, addr: u8, reg: u8)
+    where
+        F: Fn(u8) -> u8,
+    {
+        let idx_addr = self.get_abs(addr, reg);
+        let real_addr1 = self.read(idx_addr);
+        let real_addr2 = self.read(idx_addr + 1);
+        let val = self.memory[self.get_abs(real_addr1, real_addr2) as usize];
+
+        self.write_ind_x(addr, reg, f(val));
+    }
+
     // read value indirect indexed memory location given the operand and the
     // register values
     pub fn read_ind_y(&self, addr: u8, reg: u8) -> u8 {
+        self.read_ind_y_free(addr, reg)
+    }
+
+    // read value indirect indexed memory location given the operand and the
+    // register values
+    // ignore page boundary crossing for timings
+    pub fn read_ind_y_free(&self, addr: u8, reg: u8) -> u8 {
         let ind_addr1 = self.read_zpg(addr); // needs wrapping
         let ind_addr2 = self.read_zpg(addr + 1);
         let ind_addr = self.get_abs(ind_addr1, ind_addr2);
@@ -143,6 +199,13 @@ impl CpuMemory {
     // write value to the indirect indexed memory location given the operand
     // and the register values
     pub fn write_ind_y(&mut self, addr: u8, reg: u8, val: u8) {
+        self.write_ind_y_free(addr, reg, val)
+    }
+
+    // write value to the indirect indexed memory location given the operand
+    // and the register values
+    // ignore page boundary crossing for timings
+    pub fn write_ind_y_free(&mut self, addr: u8, reg: u8, val: u8) {
         let ind_addr1 = self.read_zpg(addr); // needs wrapping
         let ind_addr2 = self.read_zpg(addr + 1);
         let ind_addr = self.get_abs(ind_addr1, ind_addr2);

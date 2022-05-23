@@ -169,37 +169,76 @@ impl<'a> Ricoh2A03<'a> {
         let zpg_addr = self.cpu_mem.read_opcode_aa(self.pc);
         self.cpu_mem.read_zpg(zpg_addr)
     }
+
+    fn write_zpg(&mut self, val: u8) {
+        let zpg_addr = self.cpu_mem.read_opcode_aa(self.pc);
+        self.cpu_mem.write_zpg(zpg_addr, val);
+    }
+
     fn read_zpg_x(&self) -> u8 {
         let zpg_addr = self.cpu_mem.read_opcode_aa(self.pc);
         self.cpu_mem.read_zpg_x(zpg_addr, self.irx)
     }
+
     fn read_zpg_y(&self) -> u8 {
         let zpg_addr = self.cpu_mem.read_opcode_aa(self.pc);
         self.cpu_mem.read_zpg_x(zpg_addr, self.iry)
     }
+
     fn read_abs(&self) -> u8 {
         let aa = self.cpu_mem.read_opcode_aa(self.pc);
         let bb = self.cpu_mem.read_opcode_bb(self.pc);
         self.cpu_mem.read_abs(aa, bb)
     }
+
+    fn write_abs(&mut self, val: u8) {
+        let aa = self.cpu_mem.read_opcode_aa(self.pc);
+        let bb = self.cpu_mem.read_opcode_bb(self.pc);
+        self.cpu_mem.write_abs(aa, bb, val);
+    }
+
     fn read_abs_x(&self) -> u8 {
         let aa = self.cpu_mem.read_opcode_aa(self.pc);
         let bb = self.cpu_mem.read_opcode_bb(self.pc);
         self.cpu_mem.read_abs_x(aa, bb, self.irx)
     }
+
+    fn write_abs_x(&mut self, val: u8, free: bool) {
+        let aa = self.cpu_mem.read_opcode_aa(self.pc);
+        let bb = self.cpu_mem.read_opcode_bb(self.pc);
+
+        if free {
+            self.cpu_mem.write_abs_x_free(aa, bb, self.irx, val);
+        } else {
+            self.cpu_mem.write_abs_x(aa, bb, self.irx, val);
+        }
+    }
+
     fn read_abs_y(&self) -> u8 {
         let aa = self.cpu_mem.read_opcode_aa(self.pc);
         let bb = self.cpu_mem.read_opcode_bb(self.pc);
         self.cpu_mem.read_abs_x(aa, bb, self.iry)
     }
+
     fn read_ind_x(&self) -> u8 {
         let aa = self.cpu_mem.read_opcode_aa(self.pc);
         self.cpu_mem.read_ind_x(aa, self.irx)
     }
+
     fn read_ind_y(&self) -> u8 {
         let aa = self.cpu_mem.read_opcode_aa(self.pc);
         self.cpu_mem.read_ind_y(aa, self.iry)
     }
+
+    fn write_ind_y(&mut self, val: u8, free: bool) {
+        let aa = self.cpu_mem.read_opcode_aa(self.pc);
+        if free {
+            self.cpu_mem.write_ind_y_free(aa, self.iry, val);
+        } else {
+            self.cpu_mem.write_ind_y(aa, self.iry, val);
+        }
+    }
+
     fn read_imm(&self) -> u8 {
         self.cpu_mem.read_opcode_aa(self.pc)
     }
@@ -793,7 +832,7 @@ impl<'a> Ricoh2A03<'a> {
     // perform increment operation and return modified value
     fn inc_val(&mut self, val: u8) -> u8 {
         let mut wrap_val = Wrapping(val);
-        wrap_val += 1;
+        wrap_val += Wrapping(1);
         self.set_nz_flags(wrap_val.0);
         wrap_val.0
     }
@@ -801,7 +840,7 @@ impl<'a> Ricoh2A03<'a> {
     // perform decrement operation and return modified value
     fn dec_val(&mut self, val: u8) -> u8 {
         let mut wrap_val = Wrapping(val);
-        wrap_val -= 1;
+        wrap_val -= Wrapping(1);
         self.set_nz_flags(wrap_val.0);
         wrap_val.0
     }
@@ -897,7 +936,10 @@ impl<'a> Ricoh2A03<'a> {
         self.ora(self.read_zpg());
     }
 
-    fn asl_zpg(&mut self) {}
+    fn asl_zpg(&mut self) {
+        let val = self.asl(self.read_zpg());
+        self.write_zpg(val);
+    }
 
     fn php(&mut self) {}
 
@@ -913,7 +955,10 @@ impl<'a> Ricoh2A03<'a> {
         self.ora(self.read_abs());
     }
 
-    fn asl_abs(&mut self) {}
+    fn asl_abs(&mut self) {
+        let val = self.asl(self.read_abs());
+        self.write_abs(val);
+    }
 
     // HI 1
     fn bpl(&mut self) {
@@ -928,7 +973,10 @@ impl<'a> Ricoh2A03<'a> {
         self.ora(self.read_zpg_x());
     }
 
-    fn asl_zpg_x(&mut self) {}
+    fn asl_zpg_x(&mut self) {
+        let val = self.asl(self.read_zpg_x());
+        self.write_abs(val);
+    }
 
     fn clc_imp(&mut self) {
         // clear the carry flag
@@ -943,7 +991,10 @@ impl<'a> Ricoh2A03<'a> {
         self.ora(self.read_abs_x());
     }
 
-    fn asl_abs_x(&mut self) {}
+    fn asl_abs_x(&mut self) {
+        let val = self.asl(self.read_abs_x());
+        self.write_abs_x(val, true);
+    }
 
     // HI 2
     fn jsr_abs(&mut self) {}
