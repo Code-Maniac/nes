@@ -3,6 +3,7 @@ use std::num::Wrapping;
 // constants defining the cpu memory map
 pub const CPU_MEM_SIZE: usize = 0x10000;
 pub const CPU_MEM_PAGE_SIZE: usize = 0x100;
+pub const CPU_ADDR_STACK: usize = 0x0100;
 pub const CPU_ADDR_RAM: usize = 0x0000;
 pub const CPU_ADDR_IO_REG: usize = 0x2000;
 pub const CPU_ADDR_EXP_ROM: usize = 0x4020;
@@ -149,6 +150,14 @@ impl CpuMemory {
         self.write(addr, val);
     }
 
+    // for use with JMP ind
+    pub fn read_ind(&self, pc: u16) -> u16 {
+        let xx = self.read_opcode_aa(pc);
+        let yy = self.read_opcode_bb(pc + 1);
+
+        (xx as u16) | ((yy as u16) << 8)
+    }
+
     // read from indexed indirect memory location given the operand and the
     // register values, the address contains the address to read from
     pub fn read_ind_x(&self, addr1: u8, addr2: u8) -> u8 {
@@ -211,6 +220,16 @@ impl CpuMemory {
         let ind_addr = self.get_abs(ind_addr1, ind_addr2);
         let idx_addr = ind_addr + reg as u16;
         self.write(idx_addr, val);
+    }
+
+    // read byte from the location given the stack pointer value
+    pub fn read_stack(&self, sp: u8) -> u8 {
+        self.memory[CPU_ADDR_STACK + sp as usize]
+    }
+
+    // write byte to the location given the stack pointer value and value
+    pub fn write_stack(&mut self, sp: u8, val: u8) {
+        self.memory[CPU_ADDR_STACK + sp as usize] = val;
     }
 }
 

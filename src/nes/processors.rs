@@ -69,7 +69,7 @@ impl<'a> Ricoh2A03<'a> {
             cycle_time_ns: (1000000000.0 / clockspeed) as u128,
             wait_cycles: 0,
             pc: 0,
-            sp: 0,
+            sp: 0xff,
             sr: 0,
             acc: 0,
             irx: 0,
@@ -96,6 +96,39 @@ impl<'a> Ricoh2A03<'a> {
         let output = self.opcode_cycles;
         self.opcode_cycles = 0;
         output
+    }
+
+    // push a value onto the stack
+    // stack works top down so we decrement stack pointer
+    fn push_stack(&mut self, val: u8) {
+        // write to the current stack pointer location then decrement
+        self.cpu_mem.write_stack(self.sp, val);
+        self.sp = self.sp.wrapping_sub(1);
+    }
+
+    // pull a value from the stack
+    // stack works top down so we increment the stack pointer
+    fn pop_stack(&mut self) -> u8 {
+        // increment stack pointer then read from current location
+        self.sp = self.sp.wrapping_add(1);
+        self.cpu_mem.read_stack(self.sp)
+    }
+
+    fn push_pc(&mut self, offset: u16) {
+        let pc2 = self.pc + offset;
+        let pcl = (pc2 & 0x00ff) as u8;
+        let pch = ((pc2 & 0xff00) >> 8) as u8;
+
+        // push low then high
+        self.push_stack(pcl);
+        self.push_stack(pch);
+    }
+
+    fn pop_pc(&mut self) {
+        let pch = self.pop_stack();
+        let pcl = self.pop_stack();
+
+        self.pc = (pcl as u16) | ((pch as u16) << 8);
     }
 
     // get and set the carry flag
@@ -1015,8 +1048,21 @@ impl<'a> Ricoh2A03<'a> {
         self.add_cycles(2); // always takes an additional 2 cycles
     }
 
+    // jump to the location defined by the opcode args
+    fn jump(&mut self) {
+        // now read the new pcl and pch from the prg mem
+        let pcl = self.cpu_mem.read_opcode_aa(self.pc);
+        let pch = self.cpu_mem.read_opcode_bb(self.pc);
+
+        self.pc = (pcl as u16) | ((pch as u16) << 8);
+    }
+
     // HI 0
-    fn brk(&mut self) {}
+    fn brk(&mut self) {
+        self.push_pc(2);
+        self.set_break_command(true);
+        self.push_stack(self.sr);
+    }
 
     fn ora_ind_x(&mut self) {
         self.ora(self.read_ind_x());
@@ -1031,7 +1077,11 @@ impl<'a> Ricoh2A03<'a> {
         self.write_zpg(val);
     }
 
-    fn php(&mut self) {}
+    fn php(&mut self) {
+        self.set_break_command(true);
+        self.set_interrupt_disable(true);
+        self.push_stack(self.sr);
+    }
 
     fn ora_imm(&mut self) {
         self.ora(self.read_imm());
@@ -1087,7 +1137,11 @@ impl<'a> Ricoh2A03<'a> {
     }
 
     // HI 2
-    fn jsr_abs(&mut self) {}
+    fn jsr_abs(&mut self) {
+        // push the current program counter to the stack
+        self.push_pc(2);
+        self.jump();
+    }
 
     fn and_ind_x(&mut self) {
         self.and(self.read_ind_x());
@@ -1106,7 +1160,9 @@ impl<'a> Ricoh2A03<'a> {
         self.write_zpg(val);
     }
 
-    fn plp(&mut self) {}
+    fn plp(&mut self) {
+        self.sr = self.pop_stack();
+    }
 
     fn and_imm(&mut self) {
         self.and(self.read_imm());
@@ -1142,7 +1198,9 @@ impl<'a> Ricoh2A03<'a> {
         self.and(self.read_zpg_x());
     }
 
-    fn rol_zpg_x(&mut self) {}
+    fn rol_zpg_x(&mut self) {
+        self.rol(self.read_zpg_x());
+    }
 
     fn sec(&mut self) {
         self.set_carry_flag(true);
@@ -1162,7 +1220,10 @@ impl<'a> Ricoh2A03<'a> {
     }
 
     // HI 4
-    fn rti(&mut self) {}
+    fn rti(&mut self) {
+        self.sr = self.pop_stack();
+        self.pop_pc();
+    }
 
     fn eor_ind_x(&mut self) {
         self.eor(self.read_ind_x());
@@ -1177,7 +1238,9 @@ impl<'a> Ricoh2A03<'a> {
         self.write_zpg(val);
     }
 
-    fn pha(&mut self) {}
+    fn pha(&mut self) {
+        self.push_stack(self.acc);
+    }
 
     fn eor_imm(&mut self) {
         self.eor(self.read_imm());
@@ -1187,7 +1250,9 @@ impl<'a> Ricoh2A03<'a> {
         self.acc = self.lsr(self.acc);
     }
 
-    fn jmp_abs(&mut self) {}
+    fn jmp_abs(&mut self) {
+        self.jump();
+    }
 
     fn eor_abs(&mut self) {
         self.eor(self.read_abs());
@@ -1234,7 +1299,10 @@ impl<'a> Ricoh2A03<'a> {
     }
 
     // HI 6
-    fn rts(&mut self) {}
+    fn rts(&mut self) {
+        self.pop_pc();
+        self.pc += 1;
+    }
 
     fn adc_ind_x(&mut self) {
         self.adc(self.read_ind_x());
@@ -1249,7 +1317,10 @@ impl<'a> Ricoh2A03<'a> {
         self.write_zpg(val);
     }
 
-    fn pla(&mut self) {}
+    fn pla(&mut self) {
+        let stack_val = self.pop_stack();
+        self.lda(stack_val);
+    }
 
     fn adc_imm(&mut self) {
         self.adc(self.read_imm());
@@ -1259,7 +1330,9 @@ impl<'a> Ricoh2A03<'a> {
         self.acc = self.ror(self.acc);
     }
 
-    fn jmp_ind(&mut self) {}
+    fn jmp_ind(&mut self) {
+        self.pc = self.cpu_mem.read_ind(self.pc);
+    }
 
     fn adc_abs(&mut self) {
         self.adc(self.read_abs());
