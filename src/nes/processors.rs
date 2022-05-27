@@ -1,7 +1,10 @@
+use super::clocks::CpuClock;
 use super::memory::CpuMemory;
 use super::memory::CPU_MEM_PAGE_SIZE;
 use super::opcodes::*;
+use std::cell::RefCell;
 use std::num::Wrapping;
+use std::rc::Rc;
 
 // address of registers within the status register
 const STATUS_REG_ADDR_CARRY: u8 = 0;
@@ -17,18 +20,8 @@ pub trait Processor {
     fn next_op_time_ns(&self) -> u128;
 }
 
-// enum Ricoh2A03Op {}
-
 // The central processign unit
 pub struct Ricoh2A03<'a> {
-    // the cycle time of the processor
-    // if PAL then the clock speed is 1.66MHz -> 602ns
-    // if NTSC then the clock speed is 1.79MHz -> 558ns
-    cycle_time_ns: u128,
-
-    // cycles to wait before processing the next instruction
-    wait_cycles: u8,
-
     // the program counter
     pc: u16,
 
@@ -56,26 +49,24 @@ pub struct Ricoh2A03<'a> {
     // index register y
     iry: u8,
 
+    // the cpu clock
+    cpu_clock: Rc<RefCell<CpuClock>>,
+
     // the cpu memory map
     cpu_mem: &'a mut CpuMemory,
-
-    // the number of cpu cycles that the current opcode has taken
-    opcode_cycles: u8,
 }
 
 impl<'a> Ricoh2A03<'a> {
-    pub fn new(clockspeed: f64, cpu_mem: &'a mut CpuMemory) -> Self {
+    pub fn new(cpu_clock: Rc<RefCell<CpuClock>>, cpu_mem: &'a mut CpuMemory) -> Self {
         Ricoh2A03 {
-            cycle_time_ns: (1000000000.0 / clockspeed) as u128,
-            wait_cycles: 0,
             pc: 0,
             sp: 0xff,
             sr: 0,
             acc: 0,
             irx: 0,
             iry: 0,
+            cpu_clock,
             cpu_mem,
-            opcode_cycles: 0,
         }
     }
 
@@ -89,13 +80,7 @@ impl<'a> Ricoh2A03<'a> {
     fn push_cycles(&mut self, num: u8) {
         // happy to let a panic occur here as no single cpu opcode can take more
         // than around 10 cycles
-        self.opcode_cycles += num;
-    }
-
-    pub fn pop_cycles(&mut self) -> u8 {
-        let output = self.opcode_cycles;
-        self.opcode_cycles = 0;
-        output
+        self.cpu_clock.borrow_mut().push_cycles(num);
     }
 
     // push a value onto the stack

@@ -1,4 +1,7 @@
+use super::clocks::CpuClock;
+use std::cell::RefCell;
 use std::num::Wrapping;
+use std::rc::Rc;
 
 // constants defining the cpu memory map
 pub const CPU_MEM_SIZE: usize = 0x10000;
@@ -16,22 +19,27 @@ pub const PPU_ADDR_PATTERN_TABLES: usize = 0x0000;
 pub const PPU_ADDR_NAME_TABLES: usize = 0x2000;
 pub const PPU_ADDR_PALETTES: usize = 0x3F00;
 
-pub trait Memory {
-    /// read from memory. Apply timing to the clock
-    fn read(&self, addr: u16) -> u8;
-    /// write to memory. Apply timing to the clock
-    fn write(&mut self, addr: u16, val: u8);
-}
-
 pub struct CpuMemory {
     memory: [u8; CPU_MEM_SIZE],
+
+    // the cpu clock
+    cpu_clock: Rc<RefCell<CpuClock>>,
 }
 
 impl CpuMemory {
-    pub fn new() -> Self {
+    pub fn new(cpu_clock: Rc<RefCell<CpuClock>>) -> Self {
         CpuMemory {
             memory: [0; CPU_MEM_SIZE],
+            cpu_clock,
         }
+    }
+
+    pub fn read(&self, addr: u16) -> u8 {
+        self.memory[addr as usize]
+    }
+
+    pub fn write(&mut self, addr: u16, val: u8) {
+        self.memory[addr as usize] = val;
     }
 
     // calculate the zero page index address
@@ -233,16 +241,6 @@ impl CpuMemory {
     }
 }
 
-impl Memory for CpuMemory {
-    fn read(&self, addr: u16) -> u8 {
-        self.memory[addr as usize]
-    }
-
-    fn write(&mut self, addr: u16, val: u8) {
-        self.memory[addr as usize] = val;
-    }
-}
-
 pub struct PpuMemory {
     memory: [u8; PPU_MEM_SIZE],
 }
@@ -254,18 +252,16 @@ impl PpuMemory {
         }
     }
 
-    fn get_mirrored_addr(&self, addr: u16) -> u16 {
-        addr % (PPU_MEM_SIZE as u16)
-    }
-}
-
-impl Memory for PpuMemory {
-    fn read(&self, addr: u16) -> u8 {
+    pub fn read(&self, addr: u16) -> u8 {
         self.memory[self.get_mirrored_addr(addr) as usize]
     }
 
-    fn write(&mut self, addr: u16, val: u8) {
+    pub fn write(&mut self, addr: u16, val: u8) {
         self.memory[self.get_mirrored_addr(addr) as usize] = val;
+    }
+
+    fn get_mirrored_addr(&self, addr: u16) -> u16 {
+        addr % (PPU_MEM_SIZE as u16)
     }
 }
 
