@@ -23,7 +23,7 @@ pub const BPL: u8 = 0x10;
 pub const ORA_IND_Y: u8 = 0x11;
 pub const ORA_ZPG_X: u8 = 0x15;
 pub const ASL_ZPG_X: u8 = 0x16;
-pub const CLC_IMP: u8 = 0x18;
+pub const CLC: u8 = 0x18;
 pub const ORA_ABS_Y: u8 = 0x19;
 pub const ORA_ABS_X: u8 = 0x1D;
 pub const ASL_ABS_X: u8 = 0x1E;
@@ -212,7 +212,7 @@ mod tests {
         assert_eq!(ORA_IND_Y, 0x11);
         assert_eq!(ORA_ZPG_X, 0x15);
         assert_eq!(ASL_ZPG_X, 0x16);
-        assert_eq!(CLC_IMP, 0x18);
+        assert_eq!(CLC, 0x18);
         assert_eq!(ORA_ABS_Y, 0x19);
         assert_eq!(ORA_ABS_X, 0x1D);
         assert_eq!(ASL_ABS_X, 0x1E);
@@ -370,7 +370,7 @@ mod tests {
     fn test_duplicates() {
         let vec = vec![
             BRK, ORA_IND_X, ORA_ZPG, ASL_ZPG, PHP, ORA_IMM, ASL_A, ORA_ABS, ASL_ABS, BPL,
-            ORA_IND_Y, ORA_ZPG_X, ASL_ZPG_X, CLC_IMP, ORA_ABS_Y, ORA_ABS_X, ASL_ABS_X, JSR_ABS,
+            ORA_IND_Y, ORA_ZPG_X, ASL_ZPG_X, CLC, ORA_ABS_Y, ORA_ABS_X, ASL_ABS_X, JSR_ABS,
             AND_IND_X, BIT_ZPG, AND_ZPG, ROL_ZPG, PLP, AND_IMM, ROL_A, BIT_ABS, AND_ABS, ROL_ABS,
             BMI, AND_IND_Y, AND_ZPG_X, ROL_ZPG_X, SEC, AND_ABS_Y, AND_ABS_X, ROL_ABS_X, RTI,
             EOR_IND_X, EOR_ZPG, LSR_ZPG, PHA, EOR_IMM, LSR_A, JMP_ABS, EOR_ABS, LSR_ABS, BVC,

@@ -86,7 +86,7 @@ impl<'a> Ricoh2A03<'a> {
     }
 
     // NOTE: cycles code should be moved to CpuClock
-    fn add_cycles(&mut self, num: u8) {
+    fn push_cycles(&mut self, num: u8) {
         // happy to let a panic occur here as no single cpu opcode can take more
         // than around 10 cycles
         self.opcode_cycles += num;
@@ -129,6 +129,52 @@ impl<'a> Ricoh2A03<'a> {
         let pcl = self.pop_stack();
 
         self.pc = (pcl as u16) | ((pch as u16) << 8);
+    }
+
+    // advance the program counter by the given ammount
+    fn adv_pc(&mut self, val: u16) {
+        self.pc += val;
+    }
+
+    // adv program counter for different addressing
+    fn adv_pc_zpg(&mut self) {
+        self.adv_pc(2);
+    }
+
+    fn adv_pc_zpg_x(&mut self) {
+        self.adv_pc_zpg();
+    }
+
+    fn adv_pc_zpg_y(&mut self) {
+        self.adv_pc_zpg();
+    }
+
+    fn adv_pc_abs(&mut self) {
+        self.adv_pc(3);
+    }
+
+    fn adv_pc_abs_x(&mut self) {
+        self.adv_pc_abs();
+    }
+
+    fn adv_pc_abs_y(&mut self) {
+        self.adv_pc_abs();
+    }
+
+    fn adv_pc_imm(&mut self) {
+        self.adv_pc_zpg();
+    }
+
+    fn adv_pc_ind_x(&mut self) {
+        self.adv_pc_zpg();
+    }
+
+    fn adv_pc_ind_y(&mut self) {
+        self.adv_pc_zpg();
+    }
+
+    fn adv_pc_imp(&mut self) {
+        self.adv_pc(1);
     }
 
     // get and set the carry flag
@@ -380,8 +426,8 @@ impl<'a> Ricoh2A03<'a> {
             ASL_ZPG_X => {
                 self.asl_zpg_x();
             }
-            CLC_IMP => {
-                self.clc_imp();
+            CLC => {
+                self.clc();
             }
             ORA_ABS_Y => {
                 self.ora_abs_y();
@@ -1032,9 +1078,9 @@ impl<'a> Ricoh2A03<'a> {
         // otherwise just 1 cycle
         if self.pc_page() != pc_page {
             // a page boundary was crossed
-            self.add_cycles(2);
+            self.push_cycles(2);
         } else {
-            self.add_cycles(1);
+            self.push_cycles(1);
         }
     }
 
@@ -1043,9 +1089,9 @@ impl<'a> Ricoh2A03<'a> {
         if cond {
             self.branch(self.read_imm())
         } else {
-            self.pc += 2;
+            self.adv_pc(2);
         }
-        self.add_cycles(2); // always takes an additional 2 cycles
+        self.push_cycles(2); // always takes an additional 2 cycles
     }
 
     // jump to the location defined by the opcode args
@@ -1066,15 +1112,18 @@ impl<'a> Ricoh2A03<'a> {
 
     fn ora_ind_x(&mut self) {
         self.ora(self.read_ind_x());
+        self.adv_pc_ind_x();
     }
 
     fn ora_zpg(&mut self) {
         self.ora(self.read_zpg());
+        self.adv_pc_zpg();
     }
 
     fn asl_zpg(&mut self) {
         let val = self.asl(self.read_zpg());
         self.write_zpg(val);
+        self.adv_pc_zpg();
     }
 
     fn php(&mut self) {
@@ -1085,19 +1134,23 @@ impl<'a> Ricoh2A03<'a> {
 
     fn ora_imm(&mut self) {
         self.ora(self.read_imm());
+        self.adv_pc_imm();
     }
 
     fn asl_a(&mut self) {
         self.acc = self.asl(self.acc);
+        self.adv_pc_imp();
     }
 
     fn ora_abs(&mut self) {
         self.ora(self.read_abs());
+        self.adv_pc_abs();
     }
 
     fn asl_abs(&mut self) {
         let val = self.asl(self.read_abs());
         self.write_abs(val);
+        self.adv_pc_abs();
     }
 
     // HI 1
@@ -1107,33 +1160,40 @@ impl<'a> Ricoh2A03<'a> {
 
     fn ora_ind_y(&mut self) {
         self.ora(self.read_ind_y());
+        self.adv_pc_ind_y();
     }
 
     fn ora_zpg_x(&mut self) {
         self.ora(self.read_zpg_x());
+        self.adv_pc_zpg_x();
     }
 
     fn asl_zpg_x(&mut self) {
         let val = self.asl(self.read_zpg_x());
         self.write_abs(val);
+        self.adv_pc_zpg_x();
     }
 
-    fn clc_imp(&mut self) {
+    fn clc(&mut self) {
         // clear the carry flag
         self.set_carry_flag(false);
+        self.adv_pc_imp();
     }
 
     fn ora_abs_y(&mut self) {
         self.ora(self.read_abs_y());
+        self.adv_pc_abs_y();
     }
 
     fn ora_abs_x(&mut self) {
         self.ora(self.read_abs_x());
+        self.adv_pc_abs_x();
     }
 
     fn asl_abs_x(&mut self) {
         let val = self.asl(self.read_abs_x());
         self.write_abs_x(val, true);
+        self.adv_pc_abs_x();
     }
 
     // HI 2
@@ -1145,44 +1205,54 @@ impl<'a> Ricoh2A03<'a> {
 
     fn and_ind_x(&mut self) {
         self.and(self.read_ind_x());
+        self.adv_pc_ind_x();
     }
 
     fn bit_zpg(&mut self) {
         self.bit(self.read_zpg());
+        self.adv_pc_zpg();
     }
 
     fn and_zpg(&mut self) {
         self.and(self.read_zpg());
+        self.adv_pc_zpg();
     }
 
     fn rol_zpg(&mut self) {
         let val = self.rol(self.read_zpg());
         self.write_zpg(val);
+        self.adv_pc_zpg();
     }
 
     fn plp(&mut self) {
         self.sr = self.pop_stack();
+        self.adv_pc_imm();
     }
 
     fn and_imm(&mut self) {
         self.and(self.read_imm());
+        self.adv_pc_imm();
     }
 
     fn rol_a(&mut self) {
         self.acc = self.rol(self.acc);
+        self.adv_pc_imp();
     }
 
     fn bit_abs(&mut self) {
         self.bit(self.read_abs());
+        self.adv_pc_abs();
     }
 
     fn and_abs(&mut self) {
         self.and(self.read_abs());
+        self.adv_pc_abs();
     }
 
     fn rol_abs(&mut self) {
         let val = self.rol(self.read_abs());
         self.write_abs(val);
+        self.adv_pc_abs();
     }
 
     // HI 3
@@ -1192,31 +1262,38 @@ impl<'a> Ricoh2A03<'a> {
 
     fn and_ind_y(&mut self) {
         self.and(self.read_ind_y());
+        self.adv_pc_ind_y();
     }
 
     fn and_zpg_x(&mut self) {
         self.and(self.read_zpg_x());
+        self.adv_pc_zpg_x();
     }
 
     fn rol_zpg_x(&mut self) {
         self.rol(self.read_zpg_x());
+        self.adv_pc_zpg_x();
     }
 
     fn sec(&mut self) {
         self.set_carry_flag(true);
+        self.adv_pc_imp();
     }
 
     fn and_abs_y(&mut self) {
         self.and(self.read_abs_y());
+        self.adv_pc_abs_y();
     }
 
     fn and_abs_x(&mut self) {
         self.and(self.read_abs_x());
+        self.adv_pc_abs_x();
     }
 
     fn rol_abs_x(&mut self) {
         let val = self.rol(self.read_abs_x());
         self.write_abs_x(val, true);
+        self.adv_pc_abs_x();
     }
 
     // HI 4
@@ -1227,27 +1304,33 @@ impl<'a> Ricoh2A03<'a> {
 
     fn eor_ind_x(&mut self) {
         self.eor(self.read_ind_x());
+        self.adv_pc_ind_x();
     }
 
     fn eor_zpg(&mut self) {
         self.eor(self.read_zpg());
+        self.adv_pc_zpg();
     }
 
     fn lsr_zpg(&mut self) {
         let val = self.lsr(self.read_zpg());
         self.write_zpg(val);
+        self.adv_pc_zpg();
     }
 
     fn pha(&mut self) {
         self.push_stack(self.acc);
+        self.adv_pc_imm();
     }
 
     fn eor_imm(&mut self) {
         self.eor(self.read_imm());
+        self.adv_pc_imm();
     }
 
     fn lsr_a(&mut self) {
         self.acc = self.lsr(self.acc);
+        self.adv_pc_imp();
     }
 
     fn jmp_abs(&mut self) {
@@ -1256,11 +1339,13 @@ impl<'a> Ricoh2A03<'a> {
 
     fn eor_abs(&mut self) {
         self.eor(self.read_abs());
+        self.adv_pc_abs();
     }
 
     fn lsr_abs(&mut self) {
         let val = self.lsr(self.read_abs());
         self.write_abs(val);
+        self.adv_pc_abs();
     }
 
     // HI 5
@@ -1270,32 +1355,39 @@ impl<'a> Ricoh2A03<'a> {
 
     fn eor_ind_y(&mut self) {
         self.eor(self.read_ind_y());
+        self.adv_pc_ind_y();
     }
 
     fn eor_zpg_x(&mut self) {
         self.eor(self.read_zpg_x());
+        self.adv_pc_zpg_x();
     }
 
     fn lsr_zpg_x(&mut self) {
         let val = self.lsr(self.read_zpg());
         self.write_zpg(val);
+        self.adv_pc_zpg_x();
     }
 
     fn cli(&mut self) {
         self.set_interrupt_disable(false);
+        self.adv_pc_imp();
     }
 
     fn eor_abs_y(&mut self) {
         self.eor(self.read_abs_y());
+        self.adv_pc_abs_y();
     }
 
     fn eor_abs_x(&mut self) {
         self.eor(self.read_abs_x());
+        self.adv_pc_abs_x();
     }
 
     fn lsr_abs_x(&mut self) {
         let val = self.lsr(self.read_abs_x());
         self.write_abs_x(val, true);
+        self.adv_pc_abs_x();
     }
 
     // HI 6
@@ -1306,28 +1398,34 @@ impl<'a> Ricoh2A03<'a> {
 
     fn adc_ind_x(&mut self) {
         self.adc(self.read_ind_x());
+        self.adv_pc_ind_x();
     }
 
     fn adc_zpg(&mut self) {
         self.adc(self.read_zpg());
+        self.adv_pc_zpg();
     }
 
     fn ror_zpg(&mut self) {
         let val = self.ror(self.read_zpg());
         self.write_zpg(val);
+        self.adv_pc_zpg();
     }
 
     fn pla(&mut self) {
         let stack_val = self.pop_stack();
         self.lda(stack_val);
+        self.adv_pc_imp();
     }
 
     fn adc_imm(&mut self) {
         self.adc(self.read_imm());
+        self.adv_pc_imm();
     }
 
     fn ror_a(&mut self) {
         self.acc = self.ror(self.acc);
+        self.adv_pc_imp();
     }
 
     fn jmp_ind(&mut self) {
@@ -1336,11 +1434,13 @@ impl<'a> Ricoh2A03<'a> {
 
     fn adc_abs(&mut self) {
         self.adc(self.read_abs());
+        self.adv_pc_abs();
     }
 
     fn ror_abs(&mut self) {
         let val = self.ror(self.read_abs());
         self.write_abs(val);
+        self.adv_pc_abs();
     }
 
     // HI 7
@@ -1350,70 +1450,86 @@ impl<'a> Ricoh2A03<'a> {
 
     fn adc_ind_y(&mut self) {
         self.adc(self.read_ind_y());
+        self.adv_pc_ind_y();
     }
 
     fn adc_zpg_x(&mut self) {
         self.adc(self.read_zpg_x());
+        self.adv_pc_zpg_x();
     }
 
     fn ror_zpg_x(&mut self) {
         let val = self.ror(self.read_zpg_x());
         self.write_zpg_x(val);
+        self.adv_pc_zpg_x();
     }
 
     fn sei(&mut self) {
         self.set_interrupt_disable(true);
+        self.adv_pc_imp();
     }
 
     fn adc_abs_y(&mut self) {
         self.adc(self.read_abs_y());
+        self.adv_pc_abs_y();
     }
 
     fn adc_abs_x(&mut self) {
         self.adc(self.read_abs_x());
+        self.adv_pc_abs_x();
     }
 
     fn ror_abs_x(&mut self) {
         let val = self.ror(self.read_abs_x());
         self.write_abs_x(val, true);
+        self.adv_pc_abs_x();
     }
 
     // HI 8
     fn sta_ind_x(&mut self) {
         self.write_ind_x(self.acc);
+        self.adv_pc_ind_x();
     }
 
     fn sty_zpg(&mut self) {
         self.write_zpg(self.iry);
+        self.adv_pc_zpg();
     }
 
     fn sta_zpg(&mut self) {
         self.write_zpg(self.acc);
+        self.adv_pc_zpg();
     }
 
     fn stx_zpg(&mut self) {
         self.write_zpg(self.irx);
+        self.adv_pc_zpg();
     }
 
     fn dey(&mut self) {
         self.iry = self.dec_val(self.iry);
+        self.adv_pc_imp();
     }
 
     fn txa(&mut self) {
         self.acc = self.irx;
         self.set_nz_flags(self.acc);
+        self.adv_pc_imp();
     }
 
     fn sty_abs(&mut self) {
         self.write_abs(self.iry);
+        self.adv_pc_abs();
     }
 
     fn sta_abs(&mut self) {
         self.write_abs(self.acc);
+        self.adv_pc_abs();
     }
 
     fn stx_abs(&mut self) {
         self.write_abs(self.irx);
+        self.adv_pc_abs();
     }
 
     // HI 9
@@ -1423,86 +1539,106 @@ impl<'a> Ricoh2A03<'a> {
 
     fn sta_ind_y(&mut self) {
         self.write_ind_y(self.acc, false);
+        self.adv_pc_ind_y();
     }
 
     fn sty_zpg_x(&mut self) {
         self.write_zpg_x(self.iry);
+        self.adv_pc_zpg_x();
     }
 
     fn sta_zpg_x(&mut self) {
         self.write_zpg_x(self.acc);
+        self.adv_pc_zpg_x();
     }
 
     fn stx_zpg_y(&mut self) {
         self.write_zpg_y(self.irx);
+        self.adv_pc_zpg_y();
     }
 
     fn tya(&mut self) {
         self.acc = self.iry;
         self.set_nz_flags(self.acc);
+        self.adv_pc_imp();
     }
 
     fn sta_abs_y(&mut self) {
         self.write_abs_y(self.acc, false);
+        self.adv_pc_abs_y();
     }
 
     fn txs(&mut self) {
         self.sr = self.irx;
+        self.adv_pc_imp();
     }
 
     fn sta_abs_x(&mut self) {
         self.write_abs_x(self.acc, false);
+        self.adv_pc_abs_x();
     }
 
     // HI A
     fn ldy_imm(&mut self) {
         self.ldy(self.read_imm());
+        self.adv_pc_imm();
     }
 
     fn lda_ind_x(&mut self) {
         self.lda(self.read_ind_x());
+        self.adv_pc_ind_x();
     }
 
     fn ldx_imm(&mut self) {
         self.ldx(self.read_imm());
+        self.adv_pc_imm();
     }
 
     fn ldy_zpg(&mut self) {
         self.ldy(self.read_zpg());
+        self.adv_pc_zpg();
     }
 
     fn lda_zpg(&mut self) {
         self.lda(self.read_zpg());
+        self.adv_pc_zpg();
     }
 
     fn ldx_zpg(&mut self) {
         self.ldx(self.read_zpg());
+        self.adv_pc_zpg();
     }
 
     fn tay(&mut self) {
         self.iry = self.acc;
         self.set_nz_flags(self.iry);
+        self.adv_pc_imp();
     }
 
     fn lda_imm(&mut self) {
         self.lda(self.read_imm());
+        self.adv_pc_imm();
     }
 
     fn tax(&mut self) {
         self.irx = self.acc;
         self.set_nz_flags(self.irx);
+        self.adv_pc_imp();
     }
 
     fn ldy_abs(&mut self) {
         self.ldy(self.read_abs());
+        self.adv_pc_abs();
     }
 
     fn lda_abs(&mut self) {
         self.lda(self.read_abs());
+        self.adv_pc_abs();
     }
 
     fn ldx_abs(&mut self) {
         self.ldx(self.read_abs());
+        self.adv_pc_abs();
     }
 
     // HI B
@@ -1512,90 +1648,111 @@ impl<'a> Ricoh2A03<'a> {
 
     fn lda_ind_y(&mut self) {
         self.lda(self.read_ind_y());
+        self.adv_pc_ind_y();
     }
 
     fn ldy_zpg_x(&mut self) {
         self.ldy(self.read_zpg_x());
+        self.adv_pc_zpg_x();
     }
 
     fn lda_zpg_x(&mut self) {
         self.lda(self.read_zpg_x());
+        self.adv_pc_zpg_x();
     }
 
     fn ldx_zpg_y(&mut self) {
         self.ldx(self.read_zpg_y());
+        self.adv_pc_zpg_y();
     }
 
     fn clv(&mut self) {
         self.set_overflow_flag(false);
+        self.adv_pc_imp();
     }
 
     fn lda_abs_y(&mut self) {
         self.lda(self.read_abs_y());
+        self.adv_pc_abs_y();
     }
 
     fn tsx(&mut self) {
         self.irx = self.sp;
         self.set_nz_flags(self.irx);
+        self.adv_pc_imp();
     }
 
     fn ldy_abs_x(&mut self) {
         self.ldy(self.read_abs_x());
+        self.adv_pc_abs_x();
     }
 
     fn lda_abs_x(&mut self) {
         self.lda(self.read_abs_x());
+        self.adv_pc_abs_x();
     }
 
     fn ldx_abs_y(&mut self) {
         self.ldx(self.read_abs_y());
+        self.adv_pc_abs_y();
     }
 
     // HI C
     fn cpy_imm(&mut self) {
         self.cpy(self.read_imm());
+        self.adv_pc_imm();
     }
 
     fn cmp_ind_x(&mut self) {
         self.cmp(self.read_ind_x());
+        self.adv_pc_ind_x();
     }
 
     fn cpy_zpg(&mut self) {
         self.cpy(self.read_zpg());
+        self.adv_pc_zpg();
     }
 
     fn cmp_zpg(&mut self) {
         self.cmp(self.read_zpg());
+        self.adv_pc_zpg();
     }
 
     fn dec_zpg(&mut self) {
         let val = self.dec_val(self.read_zpg());
         self.write_zpg(val);
+        self.adv_pc_zpg();
     }
 
     fn iny(&mut self) {
         self.iry = self.inc_val(self.iry);
+        self.adv_pc_imp();
     }
 
     fn cmp_imm(&mut self) {
         self.cmp(self.read_imm());
+        self.adv_pc_imm();
     }
 
     fn dex(&mut self) {
         self.irx = self.dec_val(self.irx);
+        self.adv_pc_imp();
     }
 
     fn cpy_abs(&mut self) {
         self.cpy(self.read_abs());
+        self.adv_pc_abs();
     }
 
     fn cmp_abs(&mut self) {
         self.cmp(self.read_abs());
+        self.adv_pc_abs();
     }
 
     fn dec_abs(&mut self) {
         let val = self.dec_val(self.read_abs());
         self.write_abs(val);
+        self.adv_pc_abs();
     }
 
     // HI D
@@ -1605,79 +1762,97 @@ impl<'a> Ricoh2A03<'a> {
 
     fn cmp_ind_y(&mut self) {
         self.cmp(self.read_ind_y());
+        self.adv_pc_ind_y();
     }
 
     fn cmp_zpg_x(&mut self) {
         self.cmp(self.read_zpg_x());
+        self.adv_pc_zpg_x();
     }
 
     fn dec_zpg_x(&mut self) {
         let val = self.dec_val(self.read_zpg_x());
         self.write_zpg_x(val);
+        self.adv_pc_zpg_x();
     }
 
     fn cld(&mut self) {
         self.set_decimal_flag(false);
+        self.adv_pc_imp();
     }
 
     fn cmp_abs_y(&mut self) {
         self.cmp(self.read_abs_y());
+        self.adv_pc_abs_y();
     }
 
     fn cmp_abs_x(&mut self) {
         self.cmp(self.read_abs_x());
+        self.adv_pc_abs_x();
     }
 
     fn dec_abs_x(&mut self) {
         let val = self.dec_val(self.read_abs_x());
         self.write_abs_x(val, true);
+        self.adv_pc_abs_x();
     }
 
     // HI E
     fn cpx_imm(&mut self) {
         self.cpx(self.read_imm());
+        self.adv_pc_imm();
     }
 
     fn sbc_ind_x(&mut self) {
         self.sbc(self.read_ind_x());
+        self.adv_pc_ind_x();
     }
 
     fn cpx_zpg(&mut self) {
         self.cpx(self.read_zpg());
+        self.adv_pc_zpg();
     }
 
     fn sbc_zpg(&mut self) {
         self.sbc(self.read_zpg());
+        self.adv_pc_zpg();
     }
 
     fn inc_zpg(&mut self) {
         let val = self.inc_val(self.read_zpg());
         self.write_zpg(val);
+        self.adv_pc_zpg();
     }
 
     fn inx(&mut self) {
         self.irx = self.inc_val(self.irx);
+        self.adv_pc_imp();
     }
 
     fn sbc_imm(&mut self) {
         self.sbc(self.read_imm());
+        self.adv_pc_imm();
     }
 
     fn nop(&mut self) {
         // do nothing
+        self.adv_pc_imp();
     }
 
     fn cpx_abs(&mut self) {
         self.cpx(self.read_abs());
+        self.adv_pc_abs();
     }
 
     fn sbc_abs(&mut self) {
         self.sbc(self.read_abs());
+        self.adv_pc_abs();
     }
 
     fn inc_abs(&mut self) {
         let val = self.inc_val(self.read_abs());
         self.write_abs(val);
+        self.adv_pc_abs();
     }
 
     // HI F
@@ -1687,32 +1862,39 @@ impl<'a> Ricoh2A03<'a> {
 
     fn sbc_ind_y(&mut self) {
         self.sbc(self.read_ind_y());
+        self.adv_pc_ind_y();
     }
 
     fn sbc_zpg_x(&mut self) {
         self.sbc(self.read_zpg_x());
+        self.adv_pc_zpg_x();
     }
 
     fn inc_zpg_x(&mut self) {
         let val = self.inc_val(self.read_zpg_x());
         self.write_zpg_x(val);
+        self.adv_pc_zpg_x();
     }
 
     fn sed(&mut self) {
         self.set_decimal_flag(true);
+        self.adv_pc_imp();
     }
 
     fn sbc_abs_y(&mut self) {
         self.sbc(self.read_abs_y());
+        self.adv_pc_abs_y();
     }
 
     fn sbc_abs_x(&mut self) {
         self.sbc(self.read_abs_x());
+        self.adv_pc_abs_x();
     }
 
     fn inc_abs_x(&mut self) {
         let val = self.inc_val(self.read_abs_x());
         self.write_abs_x(val, true);
+        self.adv_pc_abs_x();
     }
 }
 
